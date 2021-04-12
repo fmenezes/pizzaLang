@@ -1,6 +1,7 @@
 #include "ast.h"
 
-int main() {
+int main()
+{
   AST::Run();
 
   return 0;

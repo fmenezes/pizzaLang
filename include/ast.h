@@ -1,6 +1,6 @@
 #pragma once
 
-namespace AST {
+namespace AST
+{
   void Run();
 }
-

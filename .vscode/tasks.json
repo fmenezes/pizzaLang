@@ -9,12 +9,12 @@
             "problemMatcher": [],
             "group": "build",
             "options": {
-                "cwd": "${workspaceRoot}/build/debug"
+                "cwd": "${workspaceRoot}/build"
             },
             "presentation": {
                 "showReuseMessage": false,
             },
-            "command": "cmake -G 'Unix Makefiles' -DCMAKE_BUILD_TYPE=Debug ../..",
+            "command": "cmake -G 'Unix Makefiles' -DCMAKE_BUILD_TYPE=Debug ..",
         },
         {
             "label": "Build (Debug)",
@@ -25,7 +25,7 @@
                 "isDefault": true
             },
             "options": {
-                "cwd": "${workspaceRoot}/build/debug"
+                "cwd": "${workspaceRoot}/build"
             },
             "presentation": {
                 "showReuseMessage": false,

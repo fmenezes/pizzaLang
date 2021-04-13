@@ -88,7 +88,7 @@ static int gettok(FILE *f)
 
 static LLVMContext TheContext;
 static IRBuilder<> Builder(TheContext);
-static std::unique_ptr<Module> TheModule = std::make_unique<Module>("my cool jit", TheContext);
+static std::unique_ptr<Module> TheModule;
 static std::map<std::string, Value *> NamedValues;
 
 namespace
@@ -642,6 +642,8 @@ namespace AST
       fprintf(stderr, "Could not open file %s\n", filePath.c_str());
       return 1;
     }
+
+    InitializeModule();
 
     getNextToken();
 

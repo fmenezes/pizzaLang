@@ -2,6 +2,7 @@
 #include <vector>
 #include <string>
 #include <map>
+#include <stdio.h>
 
 #include "ast.h"
 
@@ -14,20 +15,21 @@ enum Token
   tok_number = -5
 };
 
+static FILE *file;
 static std::string IdentifierStr;
 static double NumVal;
 
-static int gettok()
+static int gettok(FILE *f)
 {
   static int LastChar = ' ';
 
   while (isspace(LastChar))
-    LastChar = getchar();
+    LastChar = fgetc(f);
 
   if (isalpha(LastChar))
   {
     IdentifierStr = LastChar;
-    while (isalnum((LastChar = getchar())))
+    while (isalnum((LastChar = fgetc(f))))
       IdentifierStr += LastChar;
 
     if (IdentifierStr == "base")
@@ -43,7 +45,7 @@ static int gettok()
     do
     {
       NumStr += LastChar;
-      LastChar = getchar();
+      LastChar = fgetc(f);
     } while (isdigit(LastChar) || LastChar == '.');
 
     NumVal = strtod(NumStr.c_str(), nullptr);
@@ -53,11 +55,11 @@ static int gettok()
   if (LastChar == '#')
   {
     do
-      LastChar = getchar();
+      LastChar = fgetc(f);
     while (LastChar != EOF && LastChar != '\n' && LastChar != '\r');
 
     if (LastChar != EOF)
-      return gettok();
+      return gettok(f);
   }
 
   // Check for end of file.  Don't eat the EOF.
@@ -66,7 +68,7 @@ static int gettok()
 
   // Otherwise, just return the character as its ascii value.
   int ThisChar = LastChar;
-  LastChar = getchar();
+  LastChar = fgetc(f);
   return ThisChar;
 }
 
@@ -77,6 +79,7 @@ namespace
   {
   public:
     virtual ~ExprAST() {}
+    virtual const std::string dump() const = 0;
   };
 
   class NumberExprAST : public ExprAST
@@ -85,6 +88,14 @@ namespace
 
   public:
     NumberExprAST(double Val) : Val(Val) {}
+    const std::string dump() const override
+    {
+      std::string str = "{\"num\":";
+      str += this->Val;
+      str += "}";
+
+      return str;
+    }
   };
 
   class VariableExprAST : public ExprAST
@@ -93,6 +104,15 @@ namespace
 
   public:
     VariableExprAST(const std::string &Name) : Name(Name) {}
+
+    const std::string dump() const override
+    {
+      std::string str = "{\"var\":\"";
+      str += this->Name;
+      str += "\"}";
+
+      return str;
+    }
   };
 
   class BinaryExprAST : public ExprAST
@@ -104,6 +124,19 @@ namespace
     BinaryExprAST(char op, std::unique_ptr<ExprAST> LHS,
                   std::unique_ptr<ExprAST> RHS)
         : Op(op), LHS(std::move(LHS)), RHS(std::move(RHS)) {}
+
+    const std::string dump() const override
+    {
+      std::string str = "{\"op\":\"";
+      str += this->Op;
+      str += "\",\"lhs\":";
+      str += this->LHS->dump();
+      str += ",\"rhs\":";
+      str += this->RHS->dump();
+      str += "}";
+
+      return str;
+    }
   };
 
   class CallExprAST : public ExprAST
@@ -115,6 +148,25 @@ namespace
     CallExprAST(const std::string &Callee,
                 std::vector<std::unique_ptr<ExprAST>> Args)
         : Callee(Callee), Args(std::move(Args)) {}
+
+    const std::string dump() const override
+    {
+      std::string str = "{\"callee\":\"";
+      str += this->Callee;
+      str += "\",\"args\":[";
+
+      for (const auto &arg : this->Args)
+      {
+        str += arg->dump() + ",";
+      }
+      if (this->Args.size() > 0)
+      {
+        str = str.substr(0, str.size() - 1);
+      }
+      str += "]}";
+
+      return str;
+    }
   };
 
   class PrototypeAST
@@ -127,6 +179,32 @@ namespace
         : Name(name), Args(std::move(Args)) {}
 
     const std::string &getName() const { return Name; }
+
+    const std::string dump()
+    {
+      std::string str = "{\"name\":";
+      if (this->Name.size() > 0)
+      {
+        str += "\"" + this->Name + "\"";
+      }
+      else
+      {
+        str += "null";
+      }
+      str += ",\"args\":[";
+
+      for (const auto &arg : this->Args)
+      {
+        str += "\"" + arg + "\",";
+      }
+      if (this->Args.size() > 0)
+      {
+        str = str.substr(0, str.size() - 1);
+      }
+      str += "]}";
+
+      return str;
+    }
   };
 
   class FunctionAST
@@ -138,6 +216,16 @@ namespace
     FunctionAST(std::unique_ptr<PrototypeAST> Proto,
                 std::unique_ptr<ExprAST> Body)
         : Proto(std::move(Proto)), Body(std::move(Body)) {}
+
+    const std::string dump()
+    {
+      std::string str = "{\"proto\":";
+      str += this->Proto->dump();
+      str += ",\"body\":";
+      str += this->Body->dump();
+      str += "}";
+      return str;
+    }
   };
 
   static int CurTok;
@@ -155,7 +243,7 @@ namespace
 
   static int getNextToken()
   {
-    return CurTok = gettok();
+    return CurTok = gettok(file);
   }
 
   std::unique_ptr<ExprAST> LogError(const char *Str)
@@ -336,9 +424,11 @@ namespace
 
   static void HandleTopLevelExpression()
   {
-    if (ParseTopLevelExpr())
+    auto expr = ParseTopLevelExpr();
+    if (expr)
     {
       fprintf(stderr, "Parsed a top-level expr\n");
+      fprintf(stderr, "%s\n", expr->dump().c_str());
     }
     else
     {
@@ -348,9 +438,11 @@ namespace
 
   static void HandleDefinition()
   {
-    if (ParseDefinition())
+    auto expr = ParseDefinition();
+    if (expr)
     {
       fprintf(stderr, "Parsed a function definition.\n");
+      fprintf(stderr, "%s\n", expr->dump().c_str());
     }
     else
     {
@@ -360,13 +452,10 @@ namespace
 
   static void MainLoop()
   {
-    while (1)
+    while (CurTok != tok_eof)
     {
-      fprintf(stderr, "ready> ");
       switch (CurTok)
       {
-      case tok_eof:
-        return;
       case ';':
         getNextToken();
         break;
@@ -383,16 +472,19 @@ namespace
 
 namespace AST
 {
-  void Run()
+  void Run(const std::string &filePath)
   {
     BinopPrecedence['<'] = 10;
     BinopPrecedence['+'] = 20;
     BinopPrecedence['-'] = 20;
     BinopPrecedence['*'] = 40;
 
-    fprintf(stderr, "ready> ");
+    file = fopen(filePath.c_str(), "r");
+
     getNextToken();
 
     MainLoop();
+
+    fclose(file);
   }
 }

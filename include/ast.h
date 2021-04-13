@@ -2,5 +2,5 @@
 
 namespace AST
 {
-  void Run();
+  void Run(const std::string &filePath);
 }

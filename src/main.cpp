@@ -10,7 +10,5 @@ int main(int argc, const char *argv[])
     return 1;
   }
 
-  AST::Run(argv[1]);
-
-  return 0;
+  return AST::Run(argv[1]);
 }

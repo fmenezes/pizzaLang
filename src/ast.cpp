@@ -629,7 +629,7 @@ namespace
 
 namespace AST
 {
-  void Run(const std::string &filePath)
+  int Run(const std::string &filePath)
   {
     BinopPrecedence['<'] = 10;
     BinopPrecedence['+'] = 20;
@@ -637,11 +637,18 @@ namespace AST
     BinopPrecedence['*'] = 40;
 
     file = fopen(filePath.c_str(), "r");
+    if (file == nullptr)
+    {
+      fprintf(stderr, "Could not open file %s\n", filePath.c_str());
+      return 1;
+    }
 
     getNextToken();
 
     MainLoop();
 
     fclose(file);
+
+    return 0;
   }
 }

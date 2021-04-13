@@ -15,8 +15,12 @@
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Type.h>
 #include <llvm/IR/Verifier.h>
+#include <llvm/IR/LegacyPassManager.h>
+#include <llvm/Transforms/InstCombine/InstCombine.h>
+#include <llvm/Transforms/Scalar.h>
+#include <llvm/Transforms/Scalar/GVN.h>
 
-#include "ast.h"
+#include "pizza/ast.h"
 
 using namespace llvm;
 
@@ -86,17 +90,17 @@ static int gettok(FILE *f)
   return ThisChar;
 }
 
-static LLVMContext TheContext;
-static IRBuilder<> Builder(TheContext);
-static std::unique_ptr<Module> TheModule;
-static std::map<std::string, Value *> NamedValues;
-
 namespace
 {
   Value *LogErrorV(const char *Str);
   static int CurTok;
   static int getNextToken();
   static std::map<char, int> BinopPrecedence;
+  static std::unique_ptr<LLVMContext> TheContext;
+  static std::unique_ptr<Module> TheModule;
+  static std::unique_ptr<IRBuilder<>> Builder;
+  static std::unique_ptr<legacy::FunctionPassManager> TheFPM;
+  static std::map<std::string, Value *> NamedValues;
 
   class ExprAST
   {
@@ -115,7 +119,7 @@ namespace
 
     Value *codegen() override
     {
-      return ConstantFP::get(TheContext, APFloat(Val));
+      return ConstantFP::get(*TheContext, APFloat(Val));
     }
 
     const std::string dump() const override
@@ -186,18 +190,18 @@ namespace
       switch (Op)
       {
       case '+':
-        return Builder.CreateFAdd(L, R, "addtmp");
+        return Builder->CreateFAdd(L, R, "addtmp");
       case '-':
-        return Builder.CreateFSub(L, R, "subtmp");
+        return Builder->CreateFSub(L, R, "subtmp");
       case '*':
-        return Builder.CreateFMul(L, R, "multmp");
+        return Builder->CreateFMul(L, R, "multmp");
       case '/':
-        return Builder.CreateFDiv(L, R, "divtmp");
+        return Builder->CreateFDiv(L, R, "divtmp");
       case '<':
-        L = Builder.CreateFCmpULT(L, R, "cmptmp");
+        L = Builder->CreateFCmpULT(L, R, "cmptmp");
         // Convert bool 0/1 to double 0.0 or 1.0
-        return Builder.CreateUIToFP(L, Type::getDoubleTy(TheContext),
-                                    "booltmp");
+        return Builder->CreateUIToFP(L, Type::getDoubleTy(*TheContext),
+                                     "booltmp");
       default:
         return LogErrorV("invalid binary operator");
       }
@@ -252,7 +256,7 @@ namespace
           return nullptr;
       }
 
-      return Builder.CreateCall(CalleeF, ArgsV, "calltmp");
+      return Builder->CreateCall(CalleeF, ArgsV, "calltmp");
     }
   };
 
@@ -297,9 +301,9 @@ namespace
     {
       // Make the function type:  double(double,double) etc.
       std::vector<Type *> Doubles(Args.size(),
-                                  Type::getDoubleTy(TheContext));
+                                  Type::getDoubleTy(*TheContext));
       FunctionType *FT =
-          FunctionType::get(Type::getDoubleTy(TheContext), Doubles, false);
+          FunctionType::get(Type::getDoubleTy(*TheContext), Doubles, false);
 
       Function *F =
           Function::Create(FT, Function::ExternalLinkage, Name, TheModule.get());
@@ -345,8 +349,8 @@ namespace
       if (!TheFunction->empty())
         return (Function *)LogErrorV("Function cannot be redefined.");
 
-      BasicBlock *BB = BasicBlock::Create(TheContext, "entry", TheFunction);
-      Builder.SetInsertPoint(BB);
+      BasicBlock *BB = BasicBlock::Create(*TheContext, "entry", TheFunction);
+      Builder->SetInsertPoint(BB);
 
       NamedValues.clear();
       for (auto &Arg : TheFunction->args())
@@ -355,10 +359,13 @@ namespace
       if (Value *RetVal = Body->codegen())
       {
         // Finish off the function.
-        Builder.CreateRet(RetVal);
+        Builder->CreateRet(RetVal);
 
         // Validate the generated code, checking for consistency.
         verifyFunction(*TheFunction);
+
+        // Optimize the function.
+        TheFPM->run(*TheFunction);
 
         return TheFunction;
       }
@@ -368,6 +375,7 @@ namespace
     }
   };
 
+  static std::map<std::string, std::unique_ptr<PrototypeAST>> FunctionProtos;
   static std::unique_ptr<ExprAST> ParseExpression();
   std::unique_ptr<ExprAST> LogError(const char *Str);
   std::unique_ptr<PrototypeAST> LogErrorP(const char *Str);
@@ -602,9 +610,17 @@ namespace
     }
   }
 
-  static void InitializeModule()
+  void InitializeModuleAndPassManager(void)
   {
-    TheModule = std::make_unique<Module>("my cool jit", TheContext);
+    TheContext = std::make_unique<LLVMContext>();
+    TheModule = std::make_unique<Module>("my cool jit", *TheContext);
+    Builder = std::make_unique<IRBuilder<>>(*TheContext);
+    TheFPM = std::make_unique<legacy::FunctionPassManager>(TheModule.get());
+    TheFPM->add(createInstructionCombiningPass());
+    TheFPM->add(createReassociatePass());
+    TheFPM->add(createGVNPass());
+    TheFPM->add(createCFGSimplificationPass());
+    TheFPM->doInitialization();
   }
 
   static void MainLoop()
@@ -627,30 +643,35 @@ namespace
   }
 }
 
-namespace AST
+namespace Pizza
 {
-  int Run(const std::string &filePath)
+  namespace AST
   {
-    BinopPrecedence['<'] = 10;
-    BinopPrecedence['+'] = 20;
-    BinopPrecedence['-'] = 20;
-    BinopPrecedence['*'] = 40;
 
-    file = fopen(filePath.c_str(), "r");
-    if (file == nullptr)
+    int Run(const std::string &filePath)
     {
-      fprintf(stderr, "Could not open file %s\n", filePath.c_str());
-      return 1;
+      file = fopen(filePath.c_str(), "r");
+      if (file == nullptr)
+      {
+        fprintf(stderr, "Could not open file %s\n", filePath.c_str());
+        return 1;
+      }
+
+      BinopPrecedence['<'] = 10;
+      BinopPrecedence['+'] = 20;
+      BinopPrecedence['-'] = 20;
+      BinopPrecedence['*'] = 40;
+      BinopPrecedence['/'] = 40;
+
+      InitializeModuleAndPassManager();
+
+      getNextToken();
+
+      MainLoop();
+
+      fclose(file);
+
+      return 0;
     }
-
-    InitializeModule();
-
-    getNextToken();
-
-    MainLoop();
-
-    fclose(file);
-
-    return 0;
   }
 }

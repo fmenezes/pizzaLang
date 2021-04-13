@@ -1,6 +1,6 @@
 #include <string>
 
-#include "ast.h"
+#include "pizza/ast.h"
 
 int main(int argc, const char *argv[])
 {
@@ -10,5 +10,5 @@ int main(int argc, const char *argv[])
     return 1;
   }
 
-  return AST::Run(argv[1]);
+  return Pizza::AST::Run(argv[1]);
 }

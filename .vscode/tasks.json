@@ -9,12 +9,16 @@
             "problemMatcher": [],
             "group": "build",
             "options": {
-                "cwd": "${workspaceRoot}/build"
+                "cwd": "${workspaceRoot}/build",
+                "env": {
+                    "CMAKE_GENERATOR": "Unix Makefiles",
+                    "CMAKE_BUILD_TYPE": "Debug",
+                },
             },
             "presentation": {
                 "showReuseMessage": false,
             },
-            "command": "cmake -G 'Unix Makefiles' -DCMAKE_BUILD_TYPE=Debug ..",
+            "command": "cmake ..",
         },
         {
             "label": "Build (Debug)",

@@ -14,8 +14,8 @@ base fib(x)
   else
     fib(x-1)+fib(x-2);
 
-fib(1);
-fib(6);
+fib(1); #evaluate to 1
+fib(6); #evaluate to 8
 
 sauce printchar(char);
 
@@ -46,14 +46,30 @@ base binary| 5 (LHS RHS)
   else
     0;
 
-# Define = with slightly lower precedence than relationals.
-base binary= 9 (LHS RHS)
-  !(LHS < RHS | LHS > RHS);
-
 !10; #evaluate to 0
 !0; #evaluate to 1
 
 10 | 1; #evaluate to 1
 
-10 = 1; #evaluate to 0
-10 = 10; #evaluate to 1
+base binary : 1 (x y) y;
+
+base test(x)
+  print(x) :
+  x = 4 :
+  print(x);
+
+test(123);
+
+topping a = 1 in
+  a = a + 1 : print(a); # prints 2
+
+base fibi(x)
+  topping a = 1, b = 1, c in
+  (for i = 3, i < x in
+     c = a + b :
+     a = b :
+     b = c) :
+  b;
+
+fibi(1); #evaluate to 2
+fibi(6); #evaluate to 8

@@ -1163,6 +1163,9 @@ namespace
         jsonFile << "," << FnAST->dump() << std::endl;
       if (auto *FnIR = FnAST->codegen())
       {
+        if (llFile)
+          FnIR->print(*llFile);
+
         auto H = TheJIT->addModule(std::move(TheModule));
         InitializeModuleAndPassManager();
         auto ExprSymbol = TheJIT->findSymbol("__anon_expr");

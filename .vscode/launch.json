@@ -9,7 +9,8 @@
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/build/bin/bake",
-            "args": ["${workspaceFolder}/examples/test.pizza",
+            "args": [
+                "${workspaceFolder}/examples/test.pizza",
                 "${workspaceFolder}/build/out/testAST.json",
                 "${workspaceFolder}/build/out/test.ll",
                 "${workspaceFolder}/build/out/test.o"],

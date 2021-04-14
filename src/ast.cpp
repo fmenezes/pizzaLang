@@ -51,23 +51,32 @@ enum Token
   tok_unary = -13
 };
 
+static bool replMode;
 static FILE *srcFile;
 static std::ofstream jsonFile;
 static std::unique_ptr<raw_fd_ostream> llFile;
 static std::string IdentifierStr;
 static double NumVal;
 
-static int gettok(FILE *f)
+static int getNextChar()
+{
+  if (replMode)
+    return getchar();
+  else
+    return fgetc(srcFile);
+}
+
+static int gettok()
 {
   static int LastChar = ' ';
 
   while (isspace(LastChar))
-    LastChar = fgetc(f);
+    LastChar = getNextChar();
 
   if (isalpha(LastChar))
   {
     IdentifierStr = LastChar;
-    while (isalnum((LastChar = fgetc(f))))
+    while (isalnum((LastChar = getNextChar())))
       IdentifierStr += LastChar;
 
     if (IdentifierStr == "base")
@@ -101,7 +110,7 @@ static int gettok(FILE *f)
     do
     {
       NumStr += LastChar;
-      LastChar = fgetc(f);
+      LastChar = getNextChar();
     } while (isdigit(LastChar) || LastChar == '.');
 
     NumVal = strtod(NumStr.c_str(), nullptr);
@@ -111,11 +120,11 @@ static int gettok(FILE *f)
   if (LastChar == '#')
   {
     do
-      LastChar = fgetc(f);
+      LastChar = getNextChar();
     while (LastChar != EOF && LastChar != '\n' && LastChar != '\r');
 
     if (LastChar != EOF)
-      return gettok(f);
+      return gettok();
   }
 
   // Check for end of file.  Don't eat the EOF.
@@ -124,7 +133,7 @@ static int gettok(FILE *f)
 
   // Otherwise, just return the character as its ascii value.
   int ThisChar = LastChar;
-  LastChar = fgetc(f);
+  LastChar = getNextChar();
   return ThisChar;
 }
 
@@ -366,7 +375,8 @@ namespace
       str += this->Start->dump();
       str += ",\"end:\":";
       str += this->End->dump();
-      if (this->Step) {
+      if (this->Step)
+      {
         str += ",\"step:\":";
         str += this->Step->dump();
       }
@@ -804,7 +814,7 @@ namespace
 
   static int getNextToken()
   {
-    return CurTok = gettok(srcFile);
+    return CurTok = gettok();
   }
 
   std::unique_ptr<ExprAST> LogError(const char *Str)
@@ -1171,7 +1181,8 @@ namespace
         auto ExprSymbol = TheJIT->findSymbol("__anon_expr");
         assert(ExprSymbol && "Function not found");
         double (*FP)() = (double (*)())(intptr_t)cantFail(ExprSymbol.getAddress());
-        fprintf(stderr, "Evaluated to %f\n", FP());
+        if (replMode)
+          fprintf(stderr, "Evaluated to %f\n", FP());
         TheJIT->removeModule(H);
       }
     }
@@ -1194,9 +1205,12 @@ namespace
         if (llFile)
           FnIR->print(*llFile);
 
-        fprintf(stderr, "Read function definition:");
-        FnIR->print(errs());
-        fprintf(stderr, "\n");
+        if (replMode)
+        {
+          fprintf(stderr, "Read function definition:");
+          FnIR->print(errs());
+          fprintf(stderr, "\n");
+        }
         TheJIT->addModule(std::move(TheModule));
         InitializeModuleAndPassManager();
       }
@@ -1219,9 +1233,12 @@ namespace
         if (llFile)
           FnIR->print(*llFile);
 
-        fprintf(stderr, "Read extern: ");
-        FnIR->print(errs());
-        fprintf(stderr, "\n");
+        if (replMode)
+        {
+          fprintf(stderr, "Read extern: ");
+          FnIR->print(errs());
+          fprintf(stderr, "\n");
+        }
         FunctionProtos[ProtoAST->getName()] = std::move(ProtoAST);
       }
     }
@@ -1250,8 +1267,14 @@ namespace
 
   static void MainLoop()
   {
-    while (CurTok != tok_eof)
+    while (replMode || CurTok != tok_eof)
     {
+      if (replMode)
+      {
+        fprintf(stderr, "ready> ");
+      }
+      if (replMode && CurTok == tok_eof)
+        continue;
       switch (CurTok)
       {
       case ';':
@@ -1296,20 +1319,25 @@ namespace Pizza
 
     int Run(const struct Options &opt)
     {
-      srcFile = fopen(opt.srcPath.c_str(), "r");
-      if (srcFile == nullptr)
+      replMode = opt.repl;
+      if (!replMode)
       {
-        fprintf(stderr, "Could not open file %s\n", opt.srcPath.c_str());
-        return 1;
+        srcFile = fopen(opt.srcPath.c_str(), "r");
+        if (srcFile == nullptr)
+        {
+          fprintf(stderr, "Could not open file %s\n", opt.srcPath.c_str());
+          return 1;
+        }
       }
 
       if (opt.jsonPath.size() > 0)
       {
         jsonFile.open(opt.jsonPath, std::ios::trunc);
         jsonFile << "{\"ast\":[\"start\"" << std::endl;
-         if (jsonFile.fail())
+        if (jsonFile.fail())
         {
-          fclose(srcFile);
+          if (!replMode)
+            fclose(srcFile);
 
           fprintf(stderr, "Could not open file %s\n", opt.jsonPath.c_str());
           return 1;
@@ -1323,7 +1351,8 @@ namespace Pizza
 
         if (EC)
         {
-          fclose(srcFile);
+          if (!replMode)
+            fclose(srcFile);
           jsonFile.close();
           errs() << "Could not open file: " << EC.message() << "\n";
           return 1;
@@ -1341,10 +1370,13 @@ namespace Pizza
       BinopPrecedence['*'] = 40;
       BinopPrecedence['/'] = 40;
 
-      TheJIT = std::make_unique<Pizza::JIT>();
-      InitializeModuleAndPassManager();
+      if (replMode)
+        fprintf(stderr, "ready> ");
 
       getNextToken();
+
+      TheJIT = std::make_unique<Pizza::JIT>();
+      InitializeModuleAndPassManager();
 
       MainLoop();
 

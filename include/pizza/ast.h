@@ -6,6 +6,7 @@ namespace Pizza
   {
     struct Options
     {
+      bool repl;
       std::string srcPath;
       std::string jsonPath;
       std::string llPath;

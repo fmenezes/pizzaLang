@@ -7,3 +7,12 @@ test(5);
 sauce print(x);
 
 print(test(5));
+
+base fib(x)
+  if x < 3 then
+    1
+  else
+    fib(x-1)+fib(x-2);
+
+fib(1);
+fib(6);

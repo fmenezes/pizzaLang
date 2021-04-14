@@ -1,6 +1,7 @@
 #include <iostream>
 #include <vector>
 #include <string>
+#include <memory>
 #include <map>
 #include <stdio.h>
 
@@ -35,6 +36,9 @@ enum Token
   tok_identifier = -4,
   tok_number = -5,
   tok_sauce = -6,
+  tok_if = -7,
+  tok_then = -8,
+  tok_else = -9,
 };
 
 static FILE *file;
@@ -60,6 +64,12 @@ static int gettok(FILE *f)
       return tok_topping;
     if (IdentifierStr == "sauce")
       return tok_sauce;
+    if (IdentifierStr == "if")
+      return tok_if;
+    if (IdentifierStr == "then")
+      return tok_then;
+    if (IdentifierStr == "else")
+      return tok_else;
     return tok_identifier;
   }
 
@@ -125,10 +135,7 @@ namespace
   public:
     NumberExprAST(double Val) : Val(Val) {}
 
-    Value *codegen() override
-    {
-      return ConstantFP::get(*TheContext, APFloat(Val));
-    }
+    Value *codegen() override;
 
     const std::string dump() const override
     {
@@ -147,13 +154,7 @@ namespace
   public:
     VariableExprAST(const std::string &Name) : Name(Name) {}
 
-    Value *codegen() override
-    {
-      Value *V = NamedValues[Name];
-      if (!V)
-        LogErrorV("Unknown variable name");
-      return V;
-    }
+    Value *codegen() override;
 
     const std::string dump() const override
     {
@@ -175,6 +176,8 @@ namespace
                   std::unique_ptr<ExprAST> RHS)
         : Op(op), LHS(std::move(LHS)), RHS(std::move(RHS)) {}
 
+    Value *codegen() override;
+
     const std::string dump() const override
     {
       std::string str = "{\"op\":\"";
@@ -186,33 +189,6 @@ namespace
       str += "}";
 
       return str;
-    }
-
-    Value *codegen() override
-    {
-      Value *L = LHS->codegen();
-      Value *R = RHS->codegen();
-      if (!L || !R)
-        return nullptr;
-
-      switch (Op)
-      {
-      case '+':
-        return Builder->CreateFAdd(L, R, "addtmp");
-      case '-':
-        return Builder->CreateFSub(L, R, "subtmp");
-      case '*':
-        return Builder->CreateFMul(L, R, "multmp");
-      case '/':
-        return Builder->CreateFDiv(L, R, "divtmp");
-      case '<':
-        L = Builder->CreateFCmpULT(L, R, "cmptmp");
-        // Convert bool 0/1 to double 0.0 or 1.0
-        return Builder->CreateUIToFP(L, Type::getDoubleTy(*TheContext),
-                                     "booltmp");
-      default:
-        return LogErrorV("invalid binary operator");
-      }
     }
   };
 
@@ -245,27 +221,7 @@ namespace
       return str;
     }
 
-    Value *codegen() override
-    {
-      // Look up the name in the global module table.
-      Function *CalleeF = getFunction(Callee);
-      if (!CalleeF)
-        return LogErrorV("Unknown function referenced");
-
-      // If argument mismatch error.
-      if (CalleeF->arg_size() != Args.size())
-        return LogErrorV("Incorrect # arguments passed");
-
-      std::vector<Value *> ArgsV;
-      for (unsigned i = 0, e = Args.size(); i != e; ++i)
-      {
-        ArgsV.push_back(Args[i]->codegen());
-        if (!ArgsV.back())
-          return nullptr;
-      }
-
-      return Builder->CreateCall(CalleeF, ArgsV, "calltmp");
-    }
+    Value *codegen() override;
   };
 
   class PrototypeAST
@@ -305,26 +261,8 @@ namespace
       return str;
     }
 
-    Function *codegen()
-    {
-      // Make the function type:  double(double,double) etc.
-      std::vector<Type *> Doubles(Args.size(),
-                                  Type::getDoubleTy(*TheContext));
-      FunctionType *FT =
-          FunctionType::get(Type::getDoubleTy(*TheContext), Doubles, false);
-
-      Function *F =
-          Function::Create(FT, Function::ExternalLinkage, Name, TheModule.get());
-
-      unsigned Idx = 0;
-      for (auto &Arg : F->args())
-        Arg.setName(Args[Idx++]);
-
-      return F;
-    }
+    Function *codegen();
   };
-
-  static std::map<std::string, std::unique_ptr<PrototypeAST>> FunctionProtos;
 
   class FunctionAST
   {
@@ -346,46 +284,36 @@ namespace
       return str;
     }
 
-    Function *codegen()
+    Function *codegen();
+  };
+
+  class IfExprAST : public ExprAST
+  {
+    std::unique_ptr<ExprAST> Cond, Then, Else;
+
+  public:
+    IfExprAST(std::unique_ptr<ExprAST> Cond, std::unique_ptr<ExprAST> Then,
+              std::unique_ptr<ExprAST> Else)
+        : Cond(std::move(Cond)), Then(std::move(Then)), Else(std::move(Else)) {}
+
+    Value *codegen() override;
+
+    const std::string dump() const override
     {
-      const auto& Name = Proto->getName();
-      FunctionProtos[Name] = std::move(Proto);
-      Function *TheFunction = getFunction(Name);
-
-      if (!TheFunction)
-        return nullptr;
-
-      if (!TheFunction->empty())
-        return (Function *)LogErrorV("Function cannot be redefined.");
-
-      BasicBlock *BB = BasicBlock::Create(*TheContext, "entry", TheFunction);
-      Builder->SetInsertPoint(BB);
-
-      NamedValues.clear();
-      for (auto &Arg : TheFunction->args())
-        NamedValues[std::string(Arg.getName())] = &Arg;
-
-      if (Value *RetVal = Body->codegen())
-      {
-        // Finish off the function.
-        Builder->CreateRet(RetVal);
-
-        // Validate the generated code, checking for consistency.
-        verifyFunction(*TheFunction);
-
-        // Optimize the function.
-        TheFPM->run(*TheFunction);
-
-        return TheFunction;
-      }
-
-      TheFunction->eraseFromParent();
-      return nullptr;
+      std::string str = "{\"if\":{\"cond\":";
+      str += this->Cond->dump();
+      str += ",\"then\":";
+      str += this->Then->dump();
+      str += ",\"else\":";
+      str += this->Else->dump();
+      str += "}}";
+      return str;
     }
   };
 
-  static std::unique_ptr<ExprAST> ParseExpression();
+  static std::map<std::string, std::unique_ptr<PrototypeAST>> FunctionProtos;
   std::unique_ptr<ExprAST> LogError(const char *Str);
+  static std::unique_ptr<ExprAST> ParseExpression();
   std::unique_ptr<PrototypeAST> LogErrorP(const char *Str);
   static std::unique_ptr<ExprAST> ParsePrimary();
   static std::unique_ptr<ExprAST> ParseBinOpRHS(int ExprPrec,
@@ -393,6 +321,199 @@ namespace
   static std::unique_ptr<ExprAST> ParseParenExpr();
   static std::unique_ptr<ExprAST> ParseNumberExpr();
   void InitializeModuleAndPassManager(void);
+
+  Value *VariableExprAST::codegen()
+  {
+    Value *V = NamedValues[Name];
+    if (!V)
+      LogErrorV("Unknown variable name");
+    return V;
+  }
+
+  Value *NumberExprAST::codegen()
+  {
+    return ConstantFP::get(*TheContext, APFloat(Val));
+  }
+
+  Value *BinaryExprAST::codegen()
+  {
+    Value *L = LHS->codegen();
+    Value *R = RHS->codegen();
+    if (!L || !R)
+      return nullptr;
+
+    switch (Op)
+    {
+    case '+':
+      return Builder->CreateFAdd(L, R, "addtmp");
+    case '-':
+      return Builder->CreateFSub(L, R, "subtmp");
+    case '*':
+      return Builder->CreateFMul(L, R, "multmp");
+    case '/':
+      return Builder->CreateFDiv(L, R, "divtmp");
+    case '<':
+      L = Builder->CreateFCmpULT(L, R, "cmptmp");
+      // Convert bool 0/1 to double 0.0 or 1.0
+      return Builder->CreateUIToFP(L, Type::getDoubleTy(*TheContext),
+                                   "booltmp");
+    default:
+      return LogErrorV("invalid binary operator");
+    }
+  }
+
+  Value *CallExprAST::codegen()
+  {
+    // Look up the name in the global module table.
+    Function *CalleeF = getFunction(Callee);
+    if (!CalleeF)
+      return LogErrorV("Unknown function referenced");
+
+    // If argument mismatch error.
+    if (CalleeF->arg_size() != Args.size())
+      return LogErrorV("Incorrect # arguments passed");
+
+    std::vector<Value *> ArgsV;
+    for (unsigned i = 0, e = Args.size(); i != e; ++i)
+    {
+      ArgsV.push_back(Args[i]->codegen());
+      if (!ArgsV.back())
+        return nullptr;
+    }
+
+    return Builder->CreateCall(CalleeF, ArgsV, "calltmp");
+  }
+
+  Function *PrototypeAST::codegen()
+  {
+    // Make the function type:  double(double,double) etc.
+    std::vector<Type *> Doubles(Args.size(),
+                                Type::getDoubleTy(*TheContext));
+    FunctionType *FT =
+        FunctionType::get(Type::getDoubleTy(*TheContext), Doubles, false);
+
+    Function *F =
+        Function::Create(FT, Function::ExternalLinkage, Name, TheModule.get());
+
+    unsigned Idx = 0;
+    for (auto &Arg : F->args())
+      Arg.setName(Args[Idx++]);
+
+    return F;
+  }
+
+  Function *FunctionAST::codegen()
+  {
+    const auto &Name = Proto->getName();
+    FunctionProtos[Name] = std::move(Proto);
+    Function *TheFunction = getFunction(Name);
+
+    if (!TheFunction)
+      return nullptr;
+
+    if (!TheFunction->empty())
+      return (Function *)LogErrorV("Function cannot be redefined.");
+
+    BasicBlock *BB = BasicBlock::Create(*TheContext, "entry", TheFunction);
+    Builder->SetInsertPoint(BB);
+
+    NamedValues.clear();
+    for (auto &Arg : TheFunction->args())
+      NamedValues[std::string(Arg.getName())] = &Arg;
+
+    if (Value *RetVal = Body->codegen())
+    {
+      // Finish off the function.
+      Builder->CreateRet(RetVal);
+
+      // Validate the generated code, checking for consistency.
+      verifyFunction(*TheFunction);
+
+      // Optimize the function.
+      TheFPM->run(*TheFunction);
+
+      return TheFunction;
+    }
+
+    TheFunction->eraseFromParent();
+    return nullptr;
+  }
+
+  Value *IfExprAST::codegen()
+  {
+    Value *CondV = Cond->codegen();
+    if (!CondV)
+      return nullptr;
+
+    CondV = Builder->CreateFCmpONE(
+        CondV, ConstantFP::get(*TheContext, APFloat(0.0)), "ifcond");
+
+    Function *TheFunction = Builder->GetInsertBlock()->getParent();
+
+    BasicBlock *ThenBB =
+        BasicBlock::Create(*TheContext, "then", TheFunction);
+    BasicBlock *ElseBB = BasicBlock::Create(*TheContext, "else");
+    BasicBlock *MergeBB = BasicBlock::Create(*TheContext, "ifcont");
+
+    Builder->CreateCondBr(CondV, ThenBB, ElseBB);
+    Builder->SetInsertPoint(ThenBB);
+
+    Value *ThenV = Then->codegen();
+    if (!ThenV)
+      return nullptr;
+
+    Builder->CreateBr(MergeBB);
+
+    ThenBB = Builder->GetInsertBlock();
+    TheFunction->getBasicBlockList().push_back(ElseBB);
+    Builder->SetInsertPoint(ElseBB);
+
+    Value *ElseV = Else->codegen();
+    if (!ElseV)
+      return nullptr;
+
+    Builder->CreateBr(MergeBB);
+    // codegen of 'Else' can change the current block, update ElseBB for the PHI.
+    ElseBB = Builder->GetInsertBlock();
+    TheFunction->getBasicBlockList().push_back(MergeBB);
+    Builder->SetInsertPoint(MergeBB);
+    PHINode *PN =
+        Builder->CreatePHI(Type::getDoubleTy(*TheContext), 2, "iftmp");
+
+    PN->addIncoming(ThenV, ThenBB);
+    PN->addIncoming(ElseV, ElseBB);
+    return PN;
+  }
+
+  static std::unique_ptr<ExprAST> ParseIfExpr()
+  {
+    getNextToken();
+
+    // condition.
+    auto Cond = ParseExpression();
+    if (!Cond)
+      return nullptr;
+
+    if (CurTok != tok_then)
+      return LogError("expected then");
+    getNextToken(); // eat the then
+
+    auto Then = ParseExpression();
+    if (!Then)
+      return nullptr;
+
+    if (CurTok != tok_else)
+      return LogError("expected else");
+
+    getNextToken();
+
+    auto Else = ParseExpression();
+    if (!Else)
+      return nullptr;
+
+    return std::make_unique<IfExprAST>(std::move(Cond), std::move(Then),
+                                       std::move(Else));
+  }
 
   Function *getFunction(const std::string &Name)
   {
@@ -502,6 +623,8 @@ namespace
       return ParseNumberExpr();
     case '(':
       return ParseParenExpr();
+    case tok_if:
+      return ParseIfExpr();
     }
   }
 

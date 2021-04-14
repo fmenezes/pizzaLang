@@ -33,7 +33,8 @@ enum Token
   tok_base = -2,
   tok_topping = -3,
   tok_identifier = -4,
-  tok_number = -5
+  tok_number = -5,
+  tok_sauce = -6,
 };
 
 static FILE *file;
@@ -57,6 +58,8 @@ static int gettok(FILE *f)
       return tok_base;
     if (IdentifierStr == "topping")
       return tok_topping;
+    if (IdentifierStr == "sauce")
+      return tok_sauce;
     return tok_identifier;
   }
 
@@ -594,6 +597,12 @@ namespace
     return nullptr;
   }
 
+  static std::unique_ptr<PrototypeAST> ParseExtern()
+  {
+    getNextToken();
+    return ParsePrototype();
+  }
+
   static void HandleTopLevelExpression()
   {
     if (auto FnAST = ParseTopLevelExpr())
@@ -635,6 +644,25 @@ namespace
     }
   }
 
+  static void HandleExtern()
+  {
+    if (auto ProtoAST = ParseExtern())
+    {
+      if (auto *FnIR = ProtoAST->codegen())
+      {
+        fprintf(stderr, "Read extern: ");
+        FnIR->print(errs());
+        fprintf(stderr, "\n");
+        FunctionProtos[ProtoAST->getName()] = std::move(ProtoAST);
+      }
+    }
+    else
+    {
+      // Skip token for error recovery.
+      getNextToken();
+    }
+  }
+
   void InitializeModuleAndPassManager(void)
   {
     TheContext = std::make_unique<LLVMContext>();
@@ -661,12 +689,27 @@ namespace
       case tok_base:
         HandleDefinition();
         break;
+      case tok_sauce:
+        HandleExtern();
+        break;
       default:
         HandleTopLevelExpression();
         break;
       }
     }
   }
+}
+
+#ifdef _WIN32
+#define DLLEXPORT __declspec(dllexport)
+#else
+#define DLLEXPORT
+#endif
+
+extern "C" DLLEXPORT double print(double X)
+{
+  fprintf(stderr, "%f\n", X);
+  return 0;
 }
 
 namespace Pizza

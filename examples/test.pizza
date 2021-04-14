@@ -3,3 +3,7 @@ base test(x) (1+2+x)*(x+(1+2));
 
 test(4);
 test(5);
+
+sauce print(x);
+
+print(test(5));

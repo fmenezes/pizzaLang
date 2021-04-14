@@ -19,6 +19,9 @@
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Type.h>
 #include <llvm/IR/Verifier.h>
+#include <llvm/Support/Host.h>
+#include <llvm/Support/FileSystem.h>
+#include <llvm/Support/raw_ostream.h>
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Target/TargetMachine.h>
 #include <llvm/Transforms/InstCombine/InstCombine.h>
@@ -50,7 +53,7 @@ enum Token
 
 static FILE *srcFile;
 static std::ofstream jsonFile;
-static std::ofstream llFile;
+static std::unique_ptr<raw_fd_ostream> llFile;
 static std::string IdentifierStr;
 static double NumVal;
 
@@ -1185,6 +1188,9 @@ namespace
 
       if (auto *FnIR = FnAST->codegen())
       {
+        if (llFile)
+          FnIR->print(*llFile);
+
         fprintf(stderr, "Read function definition:");
         FnIR->print(errs());
         fprintf(stderr, "\n");
@@ -1207,6 +1213,9 @@ namespace
 
       if (auto *FnIR = ProtoAST->codegen())
       {
+        if (llFile)
+          FnIR->print(*llFile);
+
         fprintf(stderr, "Read extern: ");
         FnIR->print(errs());
         fprintf(stderr, "\n");
@@ -1306,13 +1315,14 @@ namespace Pizza
 
       if (opt.llPath.size() > 0)
       {
-        llFile.open(opt.llPath, std::ios::trunc);
-        if (llFile.fail())
+        std::error_code EC;
+        llFile = std::make_unique<raw_fd_ostream>(opt.llPath, EC, sys::fs::OF_None);
+
+        if (EC)
         {
           fclose(srcFile);
           jsonFile.close();
-
-          fprintf(stderr, "Could not open file %s\n", opt.llPath.c_str());
+          errs() << "Could not open file: " << EC.message() << "\n";
           return 1;
         }
       }
@@ -1343,7 +1353,7 @@ namespace Pizza
 
       if (opt.llPath.size() > 0)
       {
-        llFile.close();
+        llFile->close();
       }
 
       fclose(srcFile);

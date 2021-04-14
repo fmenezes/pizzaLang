@@ -16,3 +16,12 @@ base fib(x)
 
 fib(1);
 fib(6);
+
+sauce printchar(char);
+
+base printstar(n)
+  for i = 1, i < n, 1.0 in
+    printchar(42);  # ascii 42 = '*'
+
+# print 100 '*' characters
+printstar(100);

@@ -39,6 +39,8 @@ enum Token
   tok_if = -7,
   tok_then = -8,
   tok_else = -9,
+  tok_for = -10,
+  tok_in = -11,
 };
 
 static FILE *file;
@@ -70,6 +72,10 @@ static int gettok(FILE *f)
       return tok_then;
     if (IdentifierStr == "else")
       return tok_else;
+    if (IdentifierStr == "for")
+      return tok_for;
+    if (IdentifierStr == "in")
+      return tok_in;
     return tok_identifier;
   }
 
@@ -311,6 +317,37 @@ namespace
     }
   };
 
+  class ForExprAST : public ExprAST
+  {
+    std::string VarName;
+    std::unique_ptr<ExprAST> Start, End, Step, Body;
+
+  public:
+    ForExprAST(const std::string &VarName, std::unique_ptr<ExprAST> Start,
+               std::unique_ptr<ExprAST> End, std::unique_ptr<ExprAST> Step,
+               std::unique_ptr<ExprAST> Body)
+        : VarName(VarName), Start(std::move(Start)), End(std::move(End)),
+          Step(std::move(Step)), Body(std::move(Body)) {}
+
+    const std::string dump() const override
+    {
+      std::string str = "{\"for\":{\"var\":\"";
+      str += this->VarName;
+      str += "\",\"start\":";
+      str += this->Start->dump();
+      str += ",\"end:\":";
+      str += this->End->dump();
+      str += ",\"step:\":";
+      str += this->Step->dump();
+      str += ",\"body:\":";
+      str += this->Body->dump();
+      str += "}}";
+      return str;
+    }
+
+    Value *codegen() override;
+  };
+
   static std::map<std::string, std::unique_ptr<PrototypeAST>> FunctionProtos;
   std::unique_ptr<ExprAST> LogError(const char *Str);
   static std::unique_ptr<ExprAST> ParseExpression();
@@ -485,6 +522,55 @@ namespace
     return PN;
   }
 
+  Value *ForExprAST::codegen()
+  {
+    Value *StartVal = Start->codegen();
+    if (!StartVal)
+      return nullptr;
+    Function *TheFunction = Builder->GetInsertBlock()->getParent();
+    BasicBlock *PreheaderBB = Builder->GetInsertBlock();
+    BasicBlock *LoopBB =
+        BasicBlock::Create(*TheContext, "loop", TheFunction);
+    Builder->CreateBr(LoopBB);
+    Builder->SetInsertPoint(LoopBB);
+    PHINode *Variable = Builder->CreatePHI(Type::getDoubleTy(*TheContext),
+                                          2, VarName.c_str());
+    Variable->addIncoming(StartVal, PreheaderBB);
+    Value *OldVal = NamedValues[VarName];
+    NamedValues[VarName] = Variable;
+    if (!Body->codegen())
+      return nullptr;
+    Value *StepVal = nullptr;
+    if (Step)
+    {
+      StepVal = Step->codegen();
+      if (!StepVal)
+        return nullptr;
+    }
+    else
+    {
+      StepVal = ConstantFP::get(*TheContext, APFloat(1.0));
+    }
+
+    Value *NextVar = Builder->CreateFAdd(Variable, StepVal, "nextvar");
+    Value *EndCond = End->codegen();
+    if (!EndCond)
+      return nullptr;
+    EndCond = Builder->CreateFCmpONE(
+        EndCond, ConstantFP::get(*TheContext, APFloat(0.0)), "loopcond");
+    BasicBlock *LoopEndBB = Builder->GetInsertBlock();
+    BasicBlock *AfterBB =
+        BasicBlock::Create(*TheContext, "afterloop", TheFunction);
+    Builder->CreateCondBr(EndCond, LoopBB, AfterBB);
+    Builder->SetInsertPoint(AfterBB);
+    Variable->addIncoming(NextVar, LoopEndBB);
+    if (OldVal)
+      NamedValues[VarName] = OldVal;
+    else
+      NamedValues.erase(VarName);
+    return Constant::getNullValue(Type::getDoubleTy(*TheContext));
+  }
+
   static std::unique_ptr<ExprAST> ParseIfExpr()
   {
     getNextToken();
@@ -611,6 +697,54 @@ namespace
     return std::make_unique<CallExprAST>(IdName, std::move(Args));
   }
 
+  static std::unique_ptr<ExprAST> ParseForExpr()
+  {
+    getNextToken(); // eat the for.
+
+    if (CurTok != tok_identifier)
+      return LogError("expected identifier after for");
+
+    std::string IdName = IdentifierStr;
+    getNextToken(); // eat identifier.
+
+    if (CurTok != '=')
+      return LogError("expected '=' after for");
+    getNextToken(); // eat '='.
+
+    auto Start = ParseExpression();
+    if (!Start)
+      return nullptr;
+    if (CurTok != ',')
+      return LogError("expected ',' after for start value");
+    getNextToken();
+
+    auto End = ParseExpression();
+    if (!End)
+      return nullptr;
+
+    // The step value is optional.
+    std::unique_ptr<ExprAST> Step;
+    if (CurTok == ',')
+    {
+      getNextToken();
+      Step = ParseExpression();
+      if (!Step)
+        return nullptr;
+    }
+
+    if (CurTok != tok_in)
+      return LogError("expected 'in' after for");
+    getNextToken(); // eat 'in'.
+
+    auto Body = ParseExpression();
+    if (!Body)
+      return nullptr;
+
+    return std::make_unique<ForExprAST>(IdName, std::move(Start),
+                                        std::move(End), std::move(Step),
+                                        std::move(Body));
+  }
+
   static std::unique_ptr<ExprAST> ParsePrimary()
   {
     switch (CurTok)
@@ -625,6 +759,8 @@ namespace
       return ParseParenExpr();
     case tok_if:
       return ParseIfExpr();
+    case tok_for:
+      return ParseForExpr();
     }
   }
 
@@ -832,6 +968,12 @@ namespace
 extern "C" DLLEXPORT double print(double X)
 {
   fprintf(stderr, "%f\n", X);
+  return 0;
+}
+
+extern "C" DLLEXPORT double printchar(double X)
+{
+  fputc((char)X, stderr);
   return 0;
 }
 

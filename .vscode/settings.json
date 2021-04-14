@@ -71,6 +71,10 @@
         "random": "cpp",
         "set": "cpp",
         "shared_mutex": "cpp",
-        "stack": "cpp"
+        "stack": "cpp",
+        "*.def": "cpp",
+        "*.inc": "cpp",
+        "fstream": "cpp",
+        "iomanip": "cpp"
     }
 }

@@ -4,6 +4,12 @@ namespace Pizza
 {
   namespace AST
   {
-    int Run(const std::string &filePath);
+    struct Options
+    {
+      std::string srcPath;
+      std::string jsonPath;
+      std::string llPath;
+    };
+    int Run(const struct Options &opt);
   }
 }

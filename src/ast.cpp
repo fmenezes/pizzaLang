@@ -4,6 +4,7 @@
 #include <memory>
 #include <map>
 #include <stdio.h>
+#include <fstream>
 
 #include <llvm/ADT/APFloat.h>
 #include <llvm/ADT/STLExtras.h>
@@ -47,7 +48,9 @@ enum Token
   tok_unary = -13
 };
 
-static FILE *file;
+static FILE *srcFile;
+static std::ofstream jsonFile;
+static std::ofstream llFile;
 static std::string IdentifierStr;
 static double NumVal;
 
@@ -154,11 +157,7 @@ namespace
 
     const std::string dump() const override
     {
-      std::string str = "{\"num\":";
-      str += this->Val;
-      str += "}";
-
-      return str;
+      return "{\"num\":" + std::to_string(Val) + "}";
     }
   };
 
@@ -309,11 +308,11 @@ namespace
 
     const std::string dump()
     {
-      std::string str = "{\"proto\":";
+      std::string str = "{\"function\":{\"proto\":";
       str += this->Proto->dump();
       str += ",\"body\":";
       str += this->Body->dump();
-      str += "}";
+      str += "}}";
       return str;
     }
 
@@ -364,8 +363,10 @@ namespace
       str += this->Start->dump();
       str += ",\"end:\":";
       str += this->End->dump();
-      str += ",\"step:\":";
-      str += this->Step->dump();
+      if (this->Step) {
+        str += ",\"step:\":";
+        str += this->Step->dump();
+      }
       str += ",\"body:\":";
       str += this->Body->dump();
       str += "}}";
@@ -412,7 +413,10 @@ namespace
       std::string str = "{\"var\":{\"names\":[";
       for (const auto &VarName : this->VarNames)
       {
-        str += "{\"name\":\"" + VarName.first + "\",\"value\":" + VarName.second->dump() + "}";
+        str += "{\"name\":\"" + VarName.first + "\"";
+        if (VarName.second)
+          str += ",\"value\":" + VarName.second->dump();
+        str += "},";
       }
       if (this->VarNames.size() > 0)
       {
@@ -797,7 +801,7 @@ namespace
 
   static int getNextToken()
   {
-    return CurTok = gettok(file);
+    return CurTok = gettok(srcFile);
   }
 
   std::unique_ptr<ExprAST> LogError(const char *Str)
@@ -1152,6 +1156,8 @@ namespace
   {
     if (auto FnAST = ParseTopLevelExpr())
     {
+      if (jsonFile.is_open())
+        jsonFile << "," << FnAST->dump() << std::endl;
       if (auto *FnIR = FnAST->codegen())
       {
         auto H = TheJIT->addModule(std::move(TheModule));
@@ -1174,6 +1180,9 @@ namespace
   {
     if (auto FnAST = ParseDefinition())
     {
+      if (jsonFile.is_open())
+        jsonFile << "," << FnAST->dump() << std::endl;
+
       if (auto *FnIR = FnAST->codegen())
       {
         fprintf(stderr, "Read function definition:");
@@ -1193,6 +1202,9 @@ namespace
   {
     if (auto ProtoAST = ParseExtern())
     {
+      if (jsonFile.is_open())
+        jsonFile << ",{\"extern\":" << ProtoAST->dump() << "}" << std::endl;
+
       if (auto *FnIR = ProtoAST->codegen())
       {
         fprintf(stderr, "Read extern: ");
@@ -1270,13 +1282,39 @@ namespace Pizza
   namespace AST
   {
 
-    int Run(const std::string &filePath)
+    int Run(const struct Options &opt)
     {
-      file = fopen(filePath.c_str(), "r");
-      if (file == nullptr)
+      srcFile = fopen(opt.srcPath.c_str(), "r");
+      if (srcFile == nullptr)
       {
-        fprintf(stderr, "Could not open file %s\n", filePath.c_str());
+        fprintf(stderr, "Could not open file %s\n", opt.srcPath.c_str());
         return 1;
+      }
+
+      if (opt.jsonPath.size() > 0)
+      {
+        jsonFile.open(opt.jsonPath, std::ios::trunc);
+        jsonFile << "{\"ast\":[\"start\"" << std::endl;
+         if (jsonFile.fail())
+        {
+          fclose(srcFile);
+
+          fprintf(stderr, "Could not open file %s\n", opt.jsonPath.c_str());
+          return 1;
+        }
+      }
+
+      if (opt.llPath.size() > 0)
+      {
+        llFile.open(opt.llPath, std::ios::trunc);
+        if (llFile.fail())
+        {
+          fclose(srcFile);
+          jsonFile.close();
+
+          fprintf(stderr, "Could not open file %s\n", opt.llPath.c_str());
+          return 1;
+        }
       }
 
       InitializeNativeTarget();
@@ -1297,7 +1335,18 @@ namespace Pizza
 
       MainLoop();
 
-      fclose(file);
+      if (opt.jsonPath.size() > 0)
+      {
+        jsonFile << ",\"end\"]}" << std::endl;
+        jsonFile.close();
+      }
+
+      if (opt.llPath.size() > 0)
+      {
+        llFile.close();
+      }
+
+      fclose(srcFile);
 
       return 0;
     }

@@ -19,8 +19,11 @@
 #include <llvm/Transforms/InstCombine/InstCombine.h>
 #include <llvm/Transforms/Scalar.h>
 #include <llvm/Transforms/Scalar/GVN.h>
+#include <llvm/Support/TargetSelect.h>
+#include <llvm/Target/TargetMachine.h>
 
 #include "pizza/ast.h"
+#include "pizza/jit.h"
 
 using namespace llvm;
 
@@ -100,7 +103,9 @@ namespace
   static std::unique_ptr<Module> TheModule;
   static std::unique_ptr<IRBuilder<>> Builder;
   static std::unique_ptr<legacy::FunctionPassManager> TheFPM;
+  static std::unique_ptr<Pizza::JIT> TheJIT;
   static std::map<std::string, Value *> NamedValues;
+  Function *getFunction(const std::string &Name);
 
   class ExprAST
   {
@@ -240,7 +245,7 @@ namespace
     Value *codegen() override
     {
       // Look up the name in the global module table.
-      Function *CalleeF = TheModule->getFunction(Callee);
+      Function *CalleeF = getFunction(Callee);
       if (!CalleeF)
         return LogErrorV("Unknown function referenced");
 
@@ -316,6 +321,8 @@ namespace
     }
   };
 
+  static std::map<std::string, std::unique_ptr<PrototypeAST>> FunctionProtos;
+
   class FunctionAST
   {
     std::unique_ptr<PrototypeAST> Proto;
@@ -338,10 +345,9 @@ namespace
 
     Function *codegen()
     {
-      Function *TheFunction = TheModule->getFunction(Proto->getName());
-
-      if (!TheFunction)
-        TheFunction = Proto->codegen();
+      const auto& Name = Proto->getName();
+      FunctionProtos[Name] = std::move(Proto);
+      Function *TheFunction = getFunction(Name);
 
       if (!TheFunction)
         return nullptr;
@@ -375,7 +381,6 @@ namespace
     }
   };
 
-  static std::map<std::string, std::unique_ptr<PrototypeAST>> FunctionProtos;
   static std::unique_ptr<ExprAST> ParseExpression();
   std::unique_ptr<ExprAST> LogError(const char *Str);
   std::unique_ptr<PrototypeAST> LogErrorP(const char *Str);
@@ -384,6 +389,23 @@ namespace
                                                 std::unique_ptr<ExprAST> LHS);
   static std::unique_ptr<ExprAST> ParseParenExpr();
   static std::unique_ptr<ExprAST> ParseNumberExpr();
+  void InitializeModuleAndPassManager(void);
+
+  Function *getFunction(const std::string &Name)
+  {
+    // First, see if the function has already been added to the current module.
+    if (auto *F = TheModule->getFunction(Name))
+      return F;
+
+    // If not, check whether we can codegen the declaration from some existing
+    // prototype.
+    auto FI = FunctionProtos.find(Name);
+    if (FI != FunctionProtos.end())
+      return FI->second->codegen();
+
+    // If no existing prototype exists, return null.
+    return nullptr;
+  }
 
   static int getNextToken()
   {
@@ -566,7 +588,7 @@ namespace
   {
     if (auto E = ParseExpression())
     {
-      auto Proto = std::make_unique<PrototypeAST>("", std::vector<std::string>());
+      auto Proto = std::make_unique<PrototypeAST>("__anon_expr", std::vector<std::string>());
       return std::make_unique<FunctionAST>(std::move(Proto), std::move(E));
     }
     return nullptr;
@@ -578,12 +600,13 @@ namespace
     {
       if (auto *FnIR = FnAST->codegen())
       {
-        fprintf(stderr, "Read top-level expression:\n");
-        FnIR->print(errs());
-        fprintf(stderr, "\n");
-
-        // Remove the anonymous expression.
-        FnIR->eraseFromParent();
+        auto H = TheJIT->addModule(std::move(TheModule));
+        InitializeModuleAndPassManager();
+        auto ExprSymbol = TheJIT->findSymbol("__anon_expr");
+        assert(ExprSymbol && "Function not found");
+        double (*FP)() = (double (*)())(intptr_t)cantFail(ExprSymbol.getAddress());
+        fprintf(stderr, "Evaluated to %f\n", FP());
+        TheJIT->removeModule(H);
       }
     }
     else
@@ -599,9 +622,11 @@ namespace
     {
       if (auto *FnIR = FnAST->codegen())
       {
-        fprintf(stderr, "Read function definition:\n");
+        fprintf(stderr, "Read function definition:");
         FnIR->print(errs());
         fprintf(stderr, "\n");
+        TheJIT->addModule(std::move(TheModule));
+        InitializeModuleAndPassManager();
       }
     }
     else
@@ -614,6 +639,7 @@ namespace
   {
     TheContext = std::make_unique<LLVMContext>();
     TheModule = std::make_unique<Module>("my cool jit", *TheContext);
+    TheModule->setDataLayout(TheJIT->getTargetMachine().createDataLayout());
     Builder = std::make_unique<IRBuilder<>>(*TheContext);
     TheFPM = std::make_unique<legacy::FunctionPassManager>(TheModule.get());
     TheFPM->add(createInstructionCombiningPass());
@@ -657,12 +683,17 @@ namespace Pizza
         return 1;
       }
 
+      InitializeNativeTarget();
+      InitializeNativeTargetAsmPrinter();
+      InitializeNativeTargetAsmParser();
+
       BinopPrecedence['<'] = 10;
       BinopPrecedence['+'] = 20;
       BinopPrecedence['-'] = 20;
       BinopPrecedence['*'] = 40;
       BinopPrecedence['/'] = 40;
 
+      TheJIT = std::make_unique<Pizza::JIT>();
       InitializeModuleAndPassManager();
 
       getNextToken();

@@ -61,6 +61,16 @@
         "type_traits": "cpp",
         "typeinfo": "cpp",
         "unordered_map": "cpp",
-        "utility": "cpp"
+        "utility": "cpp",
+        "list": "cpp",
+        "__functional_03": "cpp",
+        "cinttypes": "cpp",
+        "clocale": "cpp",
+        "deque": "cpp",
+        "numeric": "cpp",
+        "random": "cpp",
+        "set": "cpp",
+        "shared_mutex": "cpp",
+        "stack": "cpp"
     }
 }

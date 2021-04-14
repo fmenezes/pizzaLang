@@ -16,6 +16,6 @@ add_executable(bake ${SOURCES})
 set_target_properties(bake PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 target_compile_features(bake PRIVATE cxx_std_14)
 
-llvm_map_components_to_libnames(llvm_libs nativecodegen)
+llvm_map_components_to_libnames(llvm_libs support core orcjit native)
 
 target_link_libraries(bake ${llvm_libs})

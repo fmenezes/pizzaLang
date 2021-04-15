@@ -6,6 +6,8 @@ test(5);
 
 sauce print(x);
 
+print(1);
+
 print(test(5));
 
 base fib(x)

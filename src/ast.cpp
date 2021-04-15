@@ -515,7 +515,7 @@ namespace
   {
     Value *V = NamedValues[Name];
     if (!V)
-      LogErrorV("Unknown variable name");
+      return LogErrorV("Unknown variable name");
     return Builder->CreateLoad(V, Name.c_str());
   }
 
@@ -1269,15 +1269,13 @@ namespace
   {
     while (replMode || CurTok != tok_eof)
     {
-      if (replMode)
-      {
-        fprintf(stderr, "ready> ");
-      }
       if (replMode && CurTok == tok_eof)
         continue;
       switch (CurTok)
       {
       case ';':
+        if (replMode)
+          fprintf(stderr, "ready> ");
         getNextToken();
         break;
       case tok_base:

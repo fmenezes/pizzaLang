@@ -515,7 +515,10 @@ namespace
   {
     Value *V = NamedValues[Name];
     if (!V)
-      return LogErrorV("Unknown variable name");
+    {
+      using namespace std::string_literals;
+      return LogErrorV(("Unknown variable name "s + Name).c_str());
+    }
     return Builder->CreateLoad(V, Name.c_str());
   }
 
@@ -539,8 +542,10 @@ namespace
 
       // Look up the name.
       Value *Variable = NamedValues[LHSE->getName()];
-      if (!Variable)
-        return LogErrorV("Unknown variable name");
+      if (!Variable) {
+        using namespace std::string_literals;
+        return LogErrorV(("Unknown variable name "s + LHSE->getName()).c_str());
+      }
 
       Builder->CreateStore(Val, Variable);
       return Val;
@@ -581,8 +586,10 @@ namespace
   {
     // Look up the name in the global module table.
     Function *CalleeF = getFunction(Callee);
-    if (!CalleeF)
-      return LogErrorV("Unknown function referenced");
+    if (!CalleeF) {
+      using namespace std::string_literals;
+      return LogErrorV(("Unknown function referenced "s + Callee).c_str());
+    }
 
     // If argument mismatch error.
     if (CalleeF->arg_size() != Args.size())
@@ -760,8 +767,10 @@ namespace
       return nullptr;
 
     Function *F = getFunction(std::string("unary") + Opcode);
-    if (!F)
-      return LogErrorV("Unknown unary operator");
+    if (!F) {
+      using namespace std::string_literals;
+      return LogErrorV(("Unknown unary operator "s + Opcode).c_str());
+    }
 
     return Builder->CreateCall(F, OperandV, "unop");
   }
@@ -975,10 +984,10 @@ namespace
       getNextToken(); // eat the ','.
 
       if (CurTok != tok_identifier)
-        return LogError("expected identifier list after var");
+        return LogError("expected identifier list after topping");
     }
     if (CurTok != tok_in)
-      return LogError("expected 'in' keyword after 'var'");
+      return LogError("expected 'in' keyword after 'topping'");
     getNextToken(); // eat 'in'.
 
     auto Body = ParseExpression();

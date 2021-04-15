@@ -1183,6 +1183,8 @@ namespace
         double (*FP)() = (double (*)())(intptr_t)cantFail(ExprSymbol.getAddress());
         if (replMode)
           fprintf(stderr, "Evaluated to %f\n", FP());
+        else
+          FP();
         TheJIT->removeModule(H);
       }
     }
@@ -1300,13 +1302,19 @@ namespace
 
 extern "C" DLLEXPORT double print(double X)
 {
-  fprintf(stderr, "%f\n", X);
+  if (replMode)
+    fprintf(stderr, "%f\n", X);
+  else
+    fprintf(stdout, "%f\n", X);
   return 0;
 }
 
 extern "C" DLLEXPORT double printchar(double X)
 {
-  fputc((char)X, stderr);
+  if (replMode)
+    fputc((char)X, stderr);
+  else
+    fputc((char)X, stdout);
   return 0;
 }
 

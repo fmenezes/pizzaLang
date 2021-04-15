@@ -75,3 +75,7 @@ base fibi(x)
 
 fibi(1); #evaluate to 2
 fibi(6); #evaluate to 8
+
+sauce sin(x); # interesting side effect we get functions from C lib
+
+sin(1);

@@ -4,7 +4,7 @@
 
 int main(int argc, const char *argv[])
 {
-  if (argc < 2 || argc > 5)
+  if (argc < 2 || argc > 4)
   {
     fprintf(stderr, "Invalid arguments\nusage: bake --repl|srcPath [jsonPath] [llPath]\n");
     return 1;

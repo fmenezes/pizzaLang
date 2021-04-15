@@ -1,0 +1,12 @@
+base binary : 1 (x y) y;
+
+base fib(x)
+  topping a = 1, b = 1, c in
+  (for i = 3, i < x in
+     c = a + b :
+     a = b :
+     b = c) :
+  b;
+
+fib(1); #evaluate to 2
+fib(6); #evaluate to 8

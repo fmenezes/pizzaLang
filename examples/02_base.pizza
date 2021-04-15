@@ -1,0 +1,12 @@
+base test(x) (1+2+x)*(x+(1+2)); # optimization works
+
+test(4); # 49
+test(5); # 64
+
+base fib(x)
+  if x < 3 then
+    1
+  else
+    fib(x-1)+fib(x-2); # recursion works
+
+fib(6) # 8

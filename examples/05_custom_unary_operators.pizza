@@ -1,0 +1,8 @@
+base unary!(v)
+  if v then
+    0
+  else
+    1;
+
+!10; #evaluate to 0
+!0; #evaluate to 1

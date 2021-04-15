@@ -75,6 +75,7 @@
         "*.def": "cpp",
         "*.inc": "cpp",
         "fstream": "cpp",
-        "iomanip": "cpp"
+        "iomanip": "cpp",
+        "filesystem": "cpp"
     }
 }

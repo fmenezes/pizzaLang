@@ -1,0 +1,13 @@
+sauce print(x);
+
+topping a = 1 in
+  print(a); # prints 1
+
+topping a = 1, b = 2 in
+  print(a + b); # prints 3
+
+base test(x)
+  topping a = 1 in
+    print(a + x);
+
+test(5) # prints 6

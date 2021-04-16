@@ -2,6 +2,8 @@
 
 This is about a new programming language called PizzaLang. Idea here is to explore implementing a new programming language.
 
+![Demo](https://raw.githubusercontent.com/fmenezes/pizzaLang/main/assets/demo.gif "Demo")
+
 ## Prerequisites
 
 - C/C++ Compiler ([CLang](https://clang.llvm.org/) is preferred)

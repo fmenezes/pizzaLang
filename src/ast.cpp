@@ -318,11 +318,13 @@ namespace
   public:
     FunctionAST(std::unique_ptr<PrototypeAST> Proto,
                 std::unique_ptr<ExprAST> Body)
-        : Proto(std::move(Proto)), Body(std::move(Body)) {
-          Name = this->Proto->getName();
-        }
+        : Proto(std::move(Proto)), Body(std::move(Body))
+    {
+      Name = this->Proto->getName();
+    }
 
-    const std::string& getName() {
+    const std::string &getName()
+    {
       return Name;
     }
 
@@ -447,7 +449,8 @@ namespace
         str = str.substr(0, str.size() - 1);
       }
       str += "]";
-      if (Body) {
+      if (Body)
+      {
         str += ",\"body\":";
         str += Body->dump();
       }
@@ -500,7 +503,8 @@ namespace
   static std::unique_ptr<ExprAST> ParseNumberExpr();
   void InitializeModuleAndPassManager(void);
 
-  void StoreNamedValues(bool copy = true) {
+  void StoreNamedValues(bool copy = true)
+  {
     NamedValuesFrame.push(std::move(NamedValues));
     if (copy)
       NamedValues = std::move(std::map<std::string, AllocaInst *>(NamedValuesFrame.top()));
@@ -554,14 +558,17 @@ namespace
       NamedValues[VarName] = std::move(Alloca);
     }
 
-    if (Body) {
+    if (Body)
+    {
       Value *BodyVal = Body->codegen();
       if (!BodyVal)
         return nullptr;
 
       // Return the body computation.
       return BodyVal;
-    } else {
+    }
+    else
+    {
       return LastInitVal;
     }
   }
@@ -597,7 +604,8 @@ namespace
 
       // Look up the name.
       Value *Variable = NamedValues[LHSE->getName()];
-      if (!Variable) {
+      if (!Variable)
+      {
         using namespace std::string_literals;
         return LogErrorV(("Unknown variable name "s + LHSE->getName()).c_str());
       }
@@ -641,7 +649,8 @@ namespace
   {
     // Look up the name in the global module table.
     Function *CalleeF = getFunction(Callee);
-    if (!CalleeF) {
+    if (!CalleeF)
+    {
       using namespace std::string_literals;
       return LogErrorV(("Unknown function referenced "s + Callee).c_str());
     }
@@ -708,7 +717,7 @@ namespace
       Builder->CreateRet(RetVal);
 
       // Validate the generated code, checking for consistency.
-      verifyFunction(*TheFunction);
+      verifyFunction(*TheFunction, &errs());
 
       // Optimize the function.
       TheFPM->run(*TheFunction);
@@ -777,23 +786,36 @@ namespace
     StoreNamedValues();
 
     Value *StartVal = Start->codegen();
-    if (!StartVal) {
+    if (!StartVal)
+    {
       RestoreNamedValues();
       return nullptr;
     }
 
+    AllocaInst *AllocaRet = CreateEntryBlockAlloca(TheFunction, "_");
     AllocaInst *Alloca = CreateEntryBlockAlloca(TheFunction, VarName);
+    Builder->CreateStore(StartVal, AllocaRet);
     Builder->CreateStore(StartVal, Alloca);
+    NamedValues["_"] = std::move(AllocaRet);
     NamedValues[VarName] = std::move(Alloca);
 
     BasicBlock *LoopBB =
         BasicBlock::Create(*TheContext, "loop", TheFunction);
+    BasicBlock *LoopBodyBB =
+        BasicBlock::Create(*TheContext, "loopbody", TheFunction);
+    BasicBlock *AfterBB =
+        BasicBlock::Create(*TheContext, "afterloop", TheFunction);
+
     Builder->CreateBr(LoopBB);
-    Builder->SetInsertPoint(LoopBB);
-    if (!Body->codegen()) {
+
+    Builder->SetInsertPoint(LoopBodyBB);
+    Value *BodyRet = Body->codegen();
+    if (!BodyRet)
+    {
       RestoreNamedValues();
       return nullptr;
     }
+    Builder->CreateStore(BodyRet, AllocaRet);
     Value *StepVal = nullptr;
     if (Step)
     {
@@ -808,25 +830,28 @@ namespace
     {
       StepVal = ConstantFP::get(*TheContext, APFloat(1.0));
     }
+    Value *CurVar =
+        Builder->CreateLoad(Alloca->getAllocatedType(), Alloca, VarName.c_str());
+    Value *NextVar = Builder->CreateFAdd(CurVar, StepVal, "nextvar");
+    Builder->CreateStore(NextVar, Alloca);
+    Builder->CreateBr(LoopBB);
 
+    Builder->SetInsertPoint(LoopBB);
     Value *EndCond = End->codegen();
     if (!EndCond)
     {
       RestoreNamedValues();
       return nullptr;
     }
-    Value *CurVar =
-        Builder->CreateLoad(Alloca->getAllocatedType(), Alloca, VarName.c_str());
-    Value *NextVar = Builder->CreateFAdd(CurVar, StepVal, "nextvar");
-    Builder->CreateStore(NextVar, Alloca);
     EndCond = Builder->CreateFCmpONE(
         EndCond, ConstantFP::get(*TheContext, APFloat(0.0)), "loopcond");
-    BasicBlock *AfterBB =
-        BasicBlock::Create(*TheContext, "afterloop", TheFunction);
-    Builder->CreateCondBr(EndCond, LoopBB, AfterBB);
+    Builder->CreateCondBr(EndCond, LoopBodyBB, AfterBB);
+
     Builder->SetInsertPoint(AfterBB);
+    Value *lastStatement =
+        Builder->CreateLoad(Alloca->getAllocatedType(), AllocaRet, "_");
     RestoreNamedValues();
-    return Constant::getNullValue(Type::getDoubleTy(*TheContext));
+    return lastStatement;
   }
 
   Value *UnaryExprAST::codegen()
@@ -836,7 +861,8 @@ namespace
       return nullptr;
 
     Function *F = getFunction(std::string("unary") + Opcode);
-    if (!F) {
+    if (!F)
+    {
       using namespace std::string_literals;
       return LogErrorV(("Unknown unary operator "s + Opcode).c_str());
     }
@@ -849,15 +875,17 @@ namespace
     StoreNamedValues();
     Value *last;
     bool anyEmpty = false;
-    std::for_each(Body.begin(), Body.end(), [&last,&anyEmpty](const auto &e) {
+    std::for_each(Body.begin(), Body.end(), [&last, &anyEmpty](const auto &e) {
       Value *V = e->codegen();
-      if (!V) {
+      if (!V)
+      {
         anyEmpty = true;
       }
       last = V;
     });
     RestoreNamedValues();
-    if (anyEmpty) {
+    if (anyEmpty)
+    {
       return nullptr;
     }
     return last;
@@ -1081,7 +1109,9 @@ namespace
       auto Body = ParseExpression();
       return std::make_unique<VarExprAST>(std::move(VarNames),
                                           std::move(Body));
-    } else {
+    }
+    else
+    {
       return std::make_unique<VarExprAST>(std::move(VarNames));
     }
   }

@@ -1,0 +1,18 @@
+sauce print(x);
+
+print({
+  topping y = for x=1, x<5 in {
+    print(x); #should print 1-4
+    x * 2;
+  };
+  print(y); #should print 8
+}); #should print 0
+
+
+base test(x) {
+  topping a = 1;
+  a = a * 2;
+  print(a);
+  x * 30; #return value
+};
+print(test(5)); #should print 150

@@ -51,3 +51,10 @@ make
 | `/`      | Divides numbers                                                              | ```1 / 2;```                                          |
 | `()`     | Lists args in bases (functions) and can change order of precedence           | ```base test(x) x = 1;``` or ```(1 + 2) * 3```        |
 | `{}`     | Scopes, allows you to add groups of statements                               | ```{ topping x = 1; x = x + 1; print(x); }```         |
+
+## Builtin Sauces
+
+| Sauce       | Description                                                                  | Example                                               |
+| ----------- | ---------------------------------------------------------------------------- | ----------------------------------------------------- |
+| `print`     | Prints to stdout argument's value                                            | ```print(10);```                                      |
+| `printchar` | Print the char to stdout                                                     | ```printchar(10); # prints \n```                      |

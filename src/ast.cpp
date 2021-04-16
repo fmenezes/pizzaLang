@@ -1380,10 +1380,10 @@ namespace
   {
     while (replMode || CurTok != tok_eof)
     {
-      if (replMode && CurTok == tok_eof)
-        continue;
       switch (CurTok)
       {
+      case tok_eof:
+        return;
       case ';':
         if (replMode)
           fprintf(stderr, "ready> ");

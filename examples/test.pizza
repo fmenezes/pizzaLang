@@ -1,13 +1,18 @@
-4+5;
-
 sauce print(x);
 
-{
-  topping a=1;
-  print(1+2);
-  print(a);
-  a = a + 1;
-  print(a);
-  topping b=2,c;
-  print(a+b+c);
-}
+for x=0, x < 5 in {
+  print(x);
+};
+
+if 0 then {
+  topping x = 1;
+  print(x);
+  {
+    topping x = 2;
+    print(x);
+  };
+  print(x);
+} else {
+  topping x = 10;
+  print(x);
+};

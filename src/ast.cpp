@@ -493,16 +493,18 @@ namespace
   static std::unique_ptr<ExprAST> ParseNumberExpr();
   void InitializeModuleAndPassManager(void);
 
-  void StoreNamedValues() {
-    fprintf(stderr, "StoreNamedValues\n");
+  void StoreNamedValues(bool copy = true) {
     NamedValuesFrame.push(std::move(NamedValues));
+    if (copy)
+      NamedValues = std::move(std::map<std::string, AllocaInst *>(NamedValuesFrame.top()));
+    else
+      NamedValues = std::move(std::map<std::string, AllocaInst *>());
   }
 
   void RestoreNamedValues()
   {
-    fprintf(stderr, "RestoreNamedValues\n");
+    NamedValues = std::move(std::map<std::string, AllocaInst *>(NamedValuesFrame.top()));
     NamedValuesFrame.pop();
-    NamedValues = NamedValuesFrame.top();
   }
 
   static AllocaInst *CreateEntryBlockAlloca(Function *TheFunction,
@@ -685,8 +687,7 @@ namespace
     BasicBlock *BB = BasicBlock::Create(*TheContext, "entry", TheFunction);
     Builder->SetInsertPoint(BB);
 
-    StoreNamedValues();
-    NamedValues = std::map<std::string, AllocaInst*>();
+    StoreNamedValues(false);
     for (auto &Arg : TheFunction->args())
     {
       AllocaInst *Alloca = CreateEntryBlockAlloca(TheFunction, std::string(Arg.getName()));
@@ -700,7 +701,7 @@ namespace
       Builder->CreateRet(RetVal);
 
       // Validate the generated code, checking for consistency.
-      bool err = verifyFunction(*TheFunction);
+      verifyFunction(*TheFunction);
 
       // Optimize the function.
       TheFPM->run(*TheFunction);
@@ -709,6 +710,8 @@ namespace
 
       return TheFunction;
     }
+
+    RestoreNamedValues();
 
     TheFunction->eraseFromParent();
     return nullptr;
@@ -766,19 +769,20 @@ namespace
 
     StoreNamedValues();
 
-    AllocaInst *Alloca = CreateEntryBlockAlloca(TheFunction, VarName);
-
     Value *StartVal = Start->codegen();
     if (!StartVal) {
       RestoreNamedValues();
       return nullptr;
     }
+
+    AllocaInst *Alloca = CreateEntryBlockAlloca(TheFunction, VarName);
     Builder->CreateStore(StartVal, Alloca);
+    NamedValues[VarName] = std::move(Alloca);
+
     BasicBlock *LoopBB =
         BasicBlock::Create(*TheContext, "loop", TheFunction);
     Builder->CreateBr(LoopBB);
     Builder->SetInsertPoint(LoopBB);
-    NamedValues[VarName] = std::move(Alloca);
     if (!Body->codegen()) {
       RestoreNamedValues();
       return nullptr;
@@ -837,15 +841,18 @@ namespace
   {
     StoreNamedValues();
     Value *last;
-    std::for_each(Body.begin(), Body.end(), [&last](const auto &e) {
+    bool anyEmpty = false;
+    std::for_each(Body.begin(), Body.end(), [&last,&anyEmpty](const auto &e) {
       Value *V = e->codegen();
       if (!V) {
-        RestoreNamedValues();
-        return nullptr;
+        anyEmpty = true;
       }
       last = V;
     });
     RestoreNamedValues();
+    if (anyEmpty) {
+      return nullptr;
+    }
     return last;
   }
 

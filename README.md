@@ -4,6 +4,12 @@ This is about a new programming language called PizzaLang. Idea here is to explo
 
 ![Demo](assets/demo.gif)
 
+## Notes
+
+- This code has been crafted following the examples from https://llvm.org/docs/tutorial/MyFirstLanguageFrontend.
+- It does not use any engineering best practices and it certainly does not reflect my personal style of coding.
+- You can find many pizza program examples in the `examples` folder.
+
 ## Prerequisites
 
 - C/C++ Compiler ([CLang](https://clang.llvm.org/) is preferred)
@@ -45,9 +51,3 @@ make
 | `/`      | Divides numbers                                                              | ```1 / 2;```                                          |
 | `()`     | Lists args in bases (functions) and can change order of precedence           | ```base test(x) x = 1;``` or ```(1 + 2) * 3```        |
 | `{}`     | Scopes, allows you to add groups of statements                               | ```{ topping x = 1; x = x + 1; print(x); }```         |
-
-## Notes
-
-- This code has been crafted following the examples from https://llvm.org/docs/tutorial/MyFirstLanguageFrontend.
-- It does not use any engineering good practices and it certainly does not reflect my personal style of coding.
-- You can find many pizza program examples in the `examples` folder.

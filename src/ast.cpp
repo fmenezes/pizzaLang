@@ -313,11 +313,18 @@ namespace
   {
     std::unique_ptr<PrototypeAST> Proto;
     std::unique_ptr<ExprAST> Body;
+    std::string Name;
 
   public:
     FunctionAST(std::unique_ptr<PrototypeAST> Proto,
                 std::unique_ptr<ExprAST> Body)
-        : Proto(std::move(Proto)), Body(std::move(Body)) {}
+        : Proto(std::move(Proto)), Body(std::move(Body)) {
+          Name = this->Proto->getName();
+        }
+
+    const std::string& getName() {
+      return Name;
+    }
 
     const std::string dump()
     {
@@ -1249,13 +1256,16 @@ namespace
   static std::unique_ptr<FunctionAST> ParseDefinition()
   {
     getNextToken();
+
     auto Proto = ParsePrototype();
     if (!Proto)
       return nullptr;
 
-    if (auto E = ParseExpression())
-      return std::make_unique<FunctionAST>(std::move(Proto), std::move(E));
-    return nullptr;
+    auto E = ParseExpression();
+    if (!E)
+      return nullptr;
+
+    return std::make_unique<FunctionAST>(std::move(Proto), std::move(E));
   }
 
   static std::unique_ptr<FunctionAST> ParseTopLevelExpr()
@@ -1317,11 +1327,7 @@ namespace
           FnIR->print(*llFile);
 
         if (replMode)
-        {
-          fprintf(stderr, "Read function definition:");
-          FnIR->print(errs());
-          fprintf(stderr, "\n");
-        }
+          fprintf(stderr, "New base '%s' available\n", FnAST->getName().c_str());
         TheJIT->addModule(std::move(TheModule));
         InitializeModuleAndPassManager();
       }
@@ -1345,11 +1351,7 @@ namespace
           FnIR->print(*llFile);
 
         if (replMode)
-        {
-          fprintf(stderr, "Read extern: ");
-          FnIR->print(errs());
-          fprintf(stderr, "\n");
-        }
+          fprintf(stderr, "New sauce '%s' available\n", ProtoAST->getName().c_str());
         FunctionProtos[ProtoAST->getName()] = std::move(ProtoAST);
       }
     }

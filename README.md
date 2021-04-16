@@ -2,7 +2,7 @@
 
 This is about a new programming language called PizzaLang. Idea here is to explore implementing a new programming language.
 
-![Demo](https://raw.githubusercontent.com/fmenezes/pizzaLang/main/assets/demo.gif "Demo")
+![Demo](assets/demo.gif)
 
 ## Prerequisites
 

@@ -23,15 +23,15 @@ make
 
 ## Builtin Keywords
 
-| Keyword      | Description                                                                  | Example                                                     |
-| ------------ | ---------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| base         | Similar to `function` in other programming languages it declares a function  | `base inc(x) x + 1;`                                        |
-| topping/in   | Similar to `var` it delcares a variable                                      | `topping x = 1 in print(x);`                                |
-| sauce        | Similar to `extern` it allows access to members declared in libs             | `sauce print(x);`                                           |
-| if/then/else | Control flow, jumps depending on condition                                   | `if x < 3 then print(0) else print(x);`                     |
-| for/in       | Control flow loops depending on condition                                    | `for i=0, i<5 in print(i);`                                 |
-| binary       | Allows creation of custom binary operators                                   | `base binary| 5 (L R) if L then 1 else if R then 1 else 0;` |
-| unary        | Allows creation of custom unary operators                                    | `base unary!(v) if v then 0 else 1;`                        |
+| Keyword      | Description                                                                  | Example                                                      |
+| ------------ | ---------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| base         | Similar to `function` in other programming languages it declares a function  | `base inc(x) x + 1;`                                         |
+| topping/in   | Similar to `var` it delcares a variable                                      | `topping x = 1 in print(x);`                                 |
+| sauce        | Similar to `extern` it allows access to members declared in libs             | `sauce print(x);`                                            |
+| if/then/else | Control flow, jumps depending on condition                                   | `if x < 3 then print(0) else print(x);`                      |
+| for/in       | Control flow loops depending on condition                                    | `for i=0, i<5 in print(i);`                                  |
+| binary       | Allows creation of custom binary operators                                   | `base binary\| 5 (L R) if L then 1 else if R then 1 else 0;` |
+| unary        | Allows creation of custom unary operators                                    | `base unary!(v) if v then 0 else 1;`                         |
 
 ## Builtin Operators
 

@@ -1,3 +1,13 @@
+4+5;
+
 sauce print(x);
 
-print(1+2);
+{
+  topping a=1;
+  print(1+2);
+  print(a);
+  a = a + 1;
+  print(a);
+  topping b=2,c;
+  print(a+b+c);
+}

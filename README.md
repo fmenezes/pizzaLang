@@ -35,12 +35,14 @@ make
 
 | Operator | Description                                                                  | Example                                               |
 | -------- | ---------------------------------------------------------------------------- | ----------------------------------------------------- |
-| `=`      | Sets a topping(variable) or an argument's value                              | ```base test(x) x = 1;``` or ```topping x = 1 in ;``` |
+| `=`      | Sets a topping (variable) or an argument's value                             | ```base test(x) x = 1;``` or ```topping x = 1;```     |
 | `<`      | Compare numbers return either 0, 1                                           | ```10 < 5;```                                         |
 | `+`      | Adds numbers                                                                 | ```1 + 2;```                                          |
 | `-`      | Subtracts numbers                                                            | ```1 - 2;```                                          |
 | `*`      | Multiplys numbers                                                            | ```1 * 2;```                                          |
 | `/`      | Divides numbers                                                              | ```1 / 2;```                                          |
+| `()`     | Lists args in bases (functions) and can change order of precedence           | ```base test(x) x = 1;``` or ```(1 + 2) * 3```        |
+| `{}`     | Scopes, allows you to add groups of statements                               | ```{ topping x = 1; x = x + 1; print(x); }```         |
 
 ## Notes
 

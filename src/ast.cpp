@@ -5,6 +5,7 @@
 #include <map>
 #include <stdio.h>
 #include <fstream>
+#include <stack>
 
 #include <llvm/ADT/APFloat.h>
 #include <llvm/ADT/STLExtras.h>
@@ -421,6 +422,9 @@ namespace
                std::unique_ptr<ExprAST> Body)
         : VarNames(std::move(VarNames)), Body(std::move(Body)) {}
 
+    VarExprAST(std::vector<std::pair<std::string, std::unique_ptr<ExprAST>>> VarNames)
+        : VarNames(std::move(VarNames)) {}
+
     const std::string dump() const override
     {
       std::string str = "{\"var\":{\"names\":[";
@@ -435,8 +439,11 @@ namespace
       {
         str = str.substr(0, str.size() - 1);
       }
-      str += "],\"body\":";
-      str += Body->dump();
+      str += "]";
+      if (Body) {
+        str += ",\"body\":";
+        str += Body->dump();
+      }
       str += "}}";
       return str;
     }
@@ -444,6 +451,34 @@ namespace
     Value *codegen() override;
   };
 
+  class ScopeExprAST : public ExprAST
+  {
+    std::vector<std::unique_ptr<ExprAST>> Body;
+
+  public:
+    ScopeExprAST(std::vector<std::unique_ptr<ExprAST>> Body)
+        : Body(std::move(Body)) {}
+
+    const std::string dump() const override
+    {
+      std::string str = "{\"scope\":[";
+      for (const auto &e : Body)
+      {
+        str += e->dump();
+        str += ",";
+      }
+      if (Body.size() > 0)
+      {
+        str = str.substr(0, str.size() - 1);
+      }
+      str += "]}";
+      return str;
+    }
+
+    Value *codegen() override;
+  };
+
+  static std::stack<std::map<std::string, AllocaInst *>> NamedValuesFrame;
   static std::map<std::string, AllocaInst *> NamedValues;
   static std::map<std::string, std::unique_ptr<PrototypeAST>> FunctionProtos;
   std::unique_ptr<ExprAST> LogError(const char *Str);
@@ -454,8 +489,21 @@ namespace
   static std::unique_ptr<ExprAST> ParseBinOpRHS(int ExprPrec,
                                                 std::unique_ptr<ExprAST> LHS);
   static std::unique_ptr<ExprAST> ParseParenExpr();
+  static std::unique_ptr<ExprAST> ParseScopeExpr();
   static std::unique_ptr<ExprAST> ParseNumberExpr();
   void InitializeModuleAndPassManager(void);
+
+  void StoreNamedValues() {
+    fprintf(stderr, "StoreNamedValues\n");
+    NamedValuesFrame.push(std::move(NamedValues));
+  }
+
+  void RestoreNamedValues()
+  {
+    fprintf(stderr, "RestoreNamedValues\n");
+    NamedValuesFrame.pop();
+    NamedValues = NamedValuesFrame.top();
+  }
 
   static AllocaInst *CreateEntryBlockAlloca(Function *TheFunction,
                                             const std::string &VarName)
@@ -468,11 +516,10 @@ namespace
 
   Value *VarExprAST::codegen()
   {
-    std::vector<AllocaInst *> OldBindings;
-
     Function *TheFunction = Builder->GetInsertBlock()->getParent();
 
     // Register all variables and emit their initializer.
+    Value *LastInitVal;
     for (unsigned i = 0, e = VarNames.size(); i != e; ++i)
     {
       const std::string &VarName = VarNames[i].first;
@@ -492,23 +539,22 @@ namespace
       AllocaInst *Alloca = CreateEntryBlockAlloca(TheFunction, VarName);
       Builder->CreateStore(InitVal, Alloca);
 
-      // Remember the old variable binding so that we can restore the binding when
-      // we unrecurse.
-      OldBindings.push_back(NamedValues[VarName]);
+      LastInitVal = InitVal;
 
       // Remember this binding.
-      NamedValues[VarName] = Alloca;
+      NamedValues[VarName] = std::move(Alloca);
     }
 
-    Value *BodyVal = Body->codegen();
-    if (!BodyVal)
-      return nullptr;
+    if (Body) {
+      Value *BodyVal = Body->codegen();
+      if (!BodyVal)
+        return nullptr;
 
-    for (unsigned i = 0, e = VarNames.size(); i != e; ++i)
-      NamedValues[VarNames[i].first] = OldBindings[i];
-
-    // Return the body computation.
-    return BodyVal;
+      // Return the body computation.
+      return BodyVal;
+    } else {
+      return LastInitVal;
+    }
   }
 
   Value *VariableExprAST::codegen()
@@ -639,12 +685,13 @@ namespace
     BasicBlock *BB = BasicBlock::Create(*TheContext, "entry", TheFunction);
     Builder->SetInsertPoint(BB);
 
-    NamedValues.clear();
+    StoreNamedValues();
+    NamedValues = std::map<std::string, AllocaInst*>();
     for (auto &Arg : TheFunction->args())
     {
       AllocaInst *Alloca = CreateEntryBlockAlloca(TheFunction, std::string(Arg.getName()));
       Builder->CreateStore(&Arg, Alloca);
-      NamedValues[std::string(Arg.getName())] = Alloca;
+      NamedValues[std::string(Arg.getName())] = std::move(Alloca);
     }
 
     if (Value *RetVal = Body->codegen())
@@ -653,10 +700,12 @@ namespace
       Builder->CreateRet(RetVal);
 
       // Validate the generated code, checking for consistency.
-      verifyFunction(*TheFunction);
+      bool err = verifyFunction(*TheFunction);
 
       // Optimize the function.
       TheFPM->run(*TheFunction);
+
+      RestoreNamedValues();
 
       return TheFunction;
     }
@@ -714,26 +763,35 @@ namespace
   Value *ForExprAST::codegen()
   {
     Function *TheFunction = Builder->GetInsertBlock()->getParent();
+
+    StoreNamedValues();
+
     AllocaInst *Alloca = CreateEntryBlockAlloca(TheFunction, VarName);
 
     Value *StartVal = Start->codegen();
-    if (!StartVal)
+    if (!StartVal) {
+      RestoreNamedValues();
       return nullptr;
+    }
     Builder->CreateStore(StartVal, Alloca);
     BasicBlock *LoopBB =
         BasicBlock::Create(*TheContext, "loop", TheFunction);
     Builder->CreateBr(LoopBB);
     Builder->SetInsertPoint(LoopBB);
-    AllocaInst *OldVal = NamedValues[VarName];
-    NamedValues[VarName] = Alloca;
-    if (!Body->codegen())
+    NamedValues[VarName] = std::move(Alloca);
+    if (!Body->codegen()) {
+      RestoreNamedValues();
       return nullptr;
+    }
     Value *StepVal = nullptr;
     if (Step)
     {
       StepVal = Step->codegen();
       if (!StepVal)
+      {
+        RestoreNamedValues();
         return nullptr;
+      }
     }
     else
     {
@@ -742,7 +800,10 @@ namespace
 
     Value *EndCond = End->codegen();
     if (!EndCond)
+    {
+      RestoreNamedValues();
       return nullptr;
+    }
     Value *CurVar =
         Builder->CreateLoad(Alloca->getAllocatedType(), Alloca, VarName.c_str());
     Value *NextVar = Builder->CreateFAdd(CurVar, StepVal, "nextvar");
@@ -753,10 +814,7 @@ namespace
         BasicBlock::Create(*TheContext, "afterloop", TheFunction);
     Builder->CreateCondBr(EndCond, LoopBB, AfterBB);
     Builder->SetInsertPoint(AfterBB);
-    if (OldVal)
-      NamedValues[VarName] = OldVal;
-    else
-      NamedValues.erase(VarName);
+    RestoreNamedValues();
     return Constant::getNullValue(Type::getDoubleTy(*TheContext));
   }
 
@@ -773,6 +831,22 @@ namespace
     }
 
     return Builder->CreateCall(F, OperandV, "unop");
+  }
+
+  Value *ScopeExprAST::codegen()
+  {
+    StoreNamedValues();
+    Value *last;
+    std::for_each(Body.begin(), Body.end(), [&last](const auto &e) {
+      Value *V = e->codegen();
+      if (!V) {
+        RestoreNamedValues();
+        return nullptr;
+      }
+      last = V;
+    });
+    RestoreNamedValues();
+    return last;
   }
 
   static std::unique_ptr<ExprAST> ParseIfExpr()
@@ -986,16 +1060,16 @@ namespace
       if (CurTok != tok_identifier)
         return LogError("expected identifier list after topping");
     }
-    if (CurTok != tok_in)
-      return LogError("expected 'in' keyword after 'topping'");
-    getNextToken(); // eat 'in'.
+    if (CurTok == tok_in)
+    {
+      getNextToken(); // eat 'in'.
 
-    auto Body = ParseExpression();
-    if (!Body)
-      return nullptr;
-
-    return std::make_unique<VarExprAST>(std::move(VarNames),
-                                        std::move(Body));
+      auto Body = ParseExpression();
+      return std::make_unique<VarExprAST>(std::move(VarNames),
+                                          std::move(Body));
+    } else {
+      return std::make_unique<VarExprAST>(std::move(VarNames));
+    }
   }
 
   static std::unique_ptr<ExprAST> ParsePrimary()
@@ -1010,6 +1084,8 @@ namespace
       return ParseNumberExpr();
     case '(':
       return ParseParenExpr();
+    case '{':
+      return ParseScopeExpr();
     case tok_if:
       return ParseIfExpr();
     case tok_for:
@@ -1022,7 +1098,7 @@ namespace
   static std::unique_ptr<ExprAST> ParseUnary()
   {
     // If the current token is not an operator, it must be a primary expr.
-    if (!isascii(CurTok) || CurTok == '(' || CurTok == ',')
+    if (!isascii(CurTok) || CurTok == '(' || CurTok == ',' || CurTok == '{')
       return ParsePrimary();
 
     // If this is a unary operator, read it.
@@ -1079,6 +1155,23 @@ namespace
       return LogError("expected ')'");
     getNextToken();
     return V;
+  }
+
+  static std::unique_ptr<ExprAST> ParseScopeExpr()
+  {
+    std::vector<std::unique_ptr<ExprAST>> v;
+    getNextToken();
+    while (CurTok != '}')
+    {
+      auto V = ParseExpression();
+      if (!V)
+        return nullptr;
+      v.push_back(std::move(V));
+      getNextToken();
+    };
+    getNextToken();
+
+    return std::make_unique<ScopeExprAST>(std::move(v));
   }
 
   static std::unique_ptr<PrototypeAST> ParsePrototype()
@@ -1392,7 +1485,7 @@ namespace Pizza
 
       TheJIT = std::make_unique<Pizza::JIT>();
       InitializeModuleAndPassManager();
-
+      StoreNamedValues(); //avoid getting empty;
       MainLoop();
 
       if (opt.jsonPath.size() > 0)

@@ -15,7 +15,9 @@ This is about a new programming language called PizzaLang. Idea here is to explo
 - C/C++ Compiler ([CLang](https://clang.llvm.org/) is preferred)
 - [CMake](http://cmake.org/)
 - [Make](https://www.gnu.org/software/make/)
-- [LLVM](https://llvm.org)
+- [LLVM](https://llvm.org/)
+- [Bison](https://www.gnu.org/software/bison/)
+- [Flex](https://github.com/westes/flex)
 
 ## Compile the compiler (bake)
 

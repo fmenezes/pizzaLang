@@ -4,23 +4,6 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "CMake",
-            "type": "shell",
-            "problemMatcher": [],
-            "group": "build",
-            "options": {
-                "cwd": "${workspaceRoot}/build",
-                "env": {
-                    "CMAKE_GENERATOR": "Unix Makefiles",
-                    "CMAKE_BUILD_TYPE": "Debug",
-                },
-            },
-            "presentation": {
-                "showReuseMessage": false,
-            },
-            "command": "cmake ..",
-        },
-        {
             "label": "Build (Debug)",
             "type": "shell",
             "problemMatcher": [],
@@ -29,13 +12,15 @@
                 "isDefault": true
             },
             "options": {
-                "cwd": "${workspaceRoot}/build"
+                "cwd": "${workspaceRoot}/build",
+                "env": {
+                    "CMAKE_BUILD_TYPE": "Debug",
+                },
             },
             "presentation": {
                 "showReuseMessage": false,
             },
-            "dependsOn": "CMake",
-            "command": "make -j 8",
+            "command": "cmake .. && cmake --build .",
         },
         {
             "label": "Open Terminal",

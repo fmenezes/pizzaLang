@@ -1,5 +1,10 @@
 {
     "env": {
+        "myIncludePath": [
+            "${workspaceFolder}",
+            "${workspaceFolder}/build",
+            "${workspaceFolder}/include"
+        ],
         "LLVM_INCLUDE": [
             "/usr/local/opt/llvm/include"
         ]
@@ -8,6 +13,7 @@
         {
             "name": "Mac",
             "includePath": [
+                "${myIncludePath}",
                 "/usr/local/include",
                 "${LLVM_INCLUDE}",
                 "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/usr/include"

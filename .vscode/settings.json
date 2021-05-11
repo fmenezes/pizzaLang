@@ -76,6 +76,9 @@
         "*.inc": "cpp",
         "fstream": "cpp",
         "iomanip": "cpp",
-        "filesystem": "cpp"
+        "filesystem": "cpp",
+        "future": "cpp",
+        "thread": "cpp",
+        "__bits": "cpp"
     }
 }

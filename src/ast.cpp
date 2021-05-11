@@ -149,6 +149,8 @@ namespace
   static std::unique_ptr<IRBuilder<>> Builder;
   static std::unique_ptr<legacy::FunctionPassManager> TheFPM;
   static std::unique_ptr<Pizza::JIT> TheJIT;
+  static llvm::ExitOnError ExitOnErr;
+
   Function *getFunction(const std::string &Name);
 
   class ExprAST
@@ -1325,16 +1327,20 @@ namespace
         if (llFile)
           FnIR->print(*llFile);
 
-        auto H = TheJIT->addModule(std::move(TheModule));
+        auto RT = TheJIT->getMainJITDylib().createResourceTracker();
+        auto TSM = llvm::orc::ThreadSafeModule(std::move(TheModule), std::move(TheContext));
+        ExitOnErr(TheJIT->addModule(std::move(TSM), RT));
         InitializeModuleAndPassManager();
-        auto ExprSymbol = TheJIT->findSymbol("__anon_expr");
+
+        auto ExprSymbol = ExitOnErr(TheJIT->lookup("__anon_expr"));
         assert(ExprSymbol && "Function not found");
-        double (*FP)() = (double (*)())(intptr_t)cantFail(ExprSymbol.getAddress());
+        double (*FP)() = (double (*)())(intptr_t)ExprSymbol.getAddress();
         if (replMode)
           fprintf(stderr, "Evaluated to %f\n", FP());
         else
           FP();
-        TheJIT->removeModule(H);
+
+        ExitOnErr(RT->remove());
       }
     }
     else
@@ -1358,7 +1364,8 @@ namespace
 
         if (replMode)
           fprintf(stderr, "New base '%s' available\n", FnAST->getName().c_str());
-        TheJIT->addModule(std::move(TheModule));
+        ExitOnErr(TheJIT->addModule(
+            llvm::orc::ThreadSafeModule(std::move(TheModule), std::move(TheContext))));
         InitializeModuleAndPassManager();
       }
     }
@@ -1396,7 +1403,7 @@ namespace
   {
     TheContext = std::make_unique<LLVMContext>();
     TheModule = std::make_unique<Module>("my cool jit", *TheContext);
-    TheModule->setDataLayout(TheJIT->getTargetMachine().createDataLayout());
+    TheModule->setDataLayout(TheJIT->getDataLayout());
     Builder = std::make_unique<IRBuilder<>>(*TheContext);
     TheFPM = std::make_unique<legacy::FunctionPassManager>(TheModule.get());
     TheFPM->add(createPromoteMemoryToRegisterPass());
@@ -1522,7 +1529,7 @@ namespace Pizza
 
       getNextToken();
 
-      TheJIT = std::make_unique<Pizza::JIT>();
+      TheJIT = ExitOnErr(Pizza::JIT::Create());
       InitializeModuleAndPassManager();
       StoreNamedValues(); //avoid getting empty;
       MainLoop();

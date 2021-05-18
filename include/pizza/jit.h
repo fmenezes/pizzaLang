@@ -24,78 +24,78 @@
 namespace Pizza
 {
 
-    class JIT
+  class JIT
+  {
+  private:
+    std::unique_ptr<llvm::orc::TargetProcessControl> TPC;
+    std::unique_ptr<llvm::orc::ExecutionSession> ES;
+
+    llvm::DataLayout DL;
+    llvm::orc::MangleAndInterner Mangle;
+
+    llvm::orc::RTDyldObjectLinkingLayer ObjectLayer;
+    llvm::orc::IRCompileLayer CompileLayer;
+
+    llvm::orc::JITDylib &MainJD;
+
+  public:
+    JIT(std::unique_ptr<llvm::orc::TargetProcessControl> TPC,
+        std::unique_ptr<llvm::orc::ExecutionSession> ES,
+        llvm::orc::JITTargetMachineBuilder JTMB, llvm::DataLayout DL)
+        : TPC(std::move(TPC)), ES(std::move(ES)), DL(std::move(DL)),
+          Mangle(*this->ES, this->DL),
+          ObjectLayer(*this->ES,
+                      []()
+                      { return std::make_unique<llvm::SectionMemoryManager>(); }),
+          CompileLayer(*this->ES, ObjectLayer,
+                       std::make_unique<llvm::orc::ConcurrentIRCompiler>(std::move(JTMB))),
+          MainJD(this->ES->createBareJITDylib("<main>"))
     {
-    private:
-        std::unique_ptr<llvm::orc::TargetProcessControl> TPC;
-        std::unique_ptr<llvm::orc::ExecutionSession> ES;
+      MainJD.addGenerator(
+          cantFail(llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(
+              DL.getGlobalPrefix())));
+    }
 
-        llvm::DataLayout DL;
-        llvm::orc::MangleAndInterner Mangle;
+    ~JIT()
+    {
+      if (auto Err = ES->endSession())
+        ES->reportError(std::move(Err));
+    }
 
-        llvm::orc::RTDyldObjectLinkingLayer ObjectLayer;
-        llvm::orc::IRCompileLayer CompileLayer;
+    static llvm::Expected<std::unique_ptr<JIT>> Create()
+    {
+      auto SSP = std::make_shared<llvm::orc::SymbolStringPool>();
+      auto TPC = llvm::orc::SelfTargetProcessControl::Create(SSP);
+      if (!TPC)
+        return TPC.takeError();
 
-        llvm::orc::JITDylib &MainJD;
+      auto ES = std::make_unique<llvm::orc::ExecutionSession>(std::move(SSP));
 
-    public:
-        JIT(std::unique_ptr<llvm::orc::TargetProcessControl> TPC,
-            std::unique_ptr<llvm::orc::ExecutionSession> ES,
-            llvm::orc::JITTargetMachineBuilder JTMB, llvm::DataLayout DL)
-            : TPC(std::move(TPC)), ES(std::move(ES)), DL(std::move(DL)),
-              Mangle(*this->ES, this->DL),
-              ObjectLayer(*this->ES,
-                          []()
-                          { return std::make_unique<llvm::SectionMemoryManager>(); }),
-              CompileLayer(*this->ES, ObjectLayer,
-                           std::make_unique<llvm::orc::ConcurrentIRCompiler>(std::move(JTMB))),
-              MainJD(this->ES->createBareJITDylib("<main>"))
-        {
-            MainJD.addGenerator(
-                cantFail(llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(
-                    DL.getGlobalPrefix())));
-        }
+      llvm::orc::JITTargetMachineBuilder JTMB((*TPC)->getTargetTriple());
 
-        ~JIT()
-        {
-            if (auto Err = ES->endSession())
-                ES->reportError(std::move(Err));
-        }
+      auto DL = JTMB.getDefaultDataLayoutForTarget();
+      if (!DL)
+        return DL.takeError();
 
-        static llvm::Expected<std::unique_ptr<JIT>> Create()
-        {
-            auto SSP = std::make_shared<llvm::orc::SymbolStringPool>();
-            auto TPC = llvm::orc::SelfTargetProcessControl::Create(SSP);
-            if (!TPC)
-                return TPC.takeError();
+      return std::make_unique<JIT>(std::move(*TPC), std::move(ES),
+                                   std::move(JTMB), std::move(*DL));
+    }
 
-            auto ES = std::make_unique<llvm::orc::ExecutionSession>(std::move(SSP));
+    const llvm::DataLayout &getDataLayout() const { return DL; }
 
-            llvm::orc::JITTargetMachineBuilder JTMB((*TPC)->getTargetTriple());
+    llvm::orc::JITDylib &getMainJITDylib() { return MainJD; }
 
-            auto DL = JTMB.getDefaultDataLayoutForTarget();
-            if (!DL)
-                return DL.takeError();
+    llvm::Error addModule(llvm::orc::ThreadSafeModule TSM, llvm::orc::ResourceTrackerSP RT = nullptr)
+    {
+      if (!RT)
+        RT = MainJD.getDefaultResourceTracker();
+      return CompileLayer.add(RT, std::move(TSM));
+    }
 
-            return std::make_unique<JIT>(std::move(*TPC), std::move(ES),
-                                                     std::move(JTMB), std::move(*DL));
-        }
-
-        const llvm::DataLayout &getDataLayout() const { return DL; }
-
-        llvm::orc::JITDylib &getMainJITDylib() { return MainJD; }
-
-        llvm::Error addModule(llvm::orc::ThreadSafeModule TSM, llvm::orc::ResourceTrackerSP RT = nullptr)
-        {
-            if (!RT)
-                RT = MainJD.getDefaultResourceTracker();
-            return CompileLayer.add(RT, std::move(TSM));
-        }
-
-        llvm::Expected<llvm::JITEvaluatedSymbol> lookup(llvm::StringRef Name)
-        {
-            return ES->lookup({&MainJD}, Mangle(Name.str()));
-        }
-    };
+    llvm::Expected<llvm::JITEvaluatedSymbol> lookup(llvm::StringRef Name)
+    {
+      return ES->lookup({&MainJD}, Mangle(Name.str()));
+    }
+  };
 
 }

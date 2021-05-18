@@ -5,22 +5,22 @@
 #include "parser.hpp"
 
 #define YY_DECL \
-    yy::parser::symbol_type yylex(driver &drv)
+  yy::parser::symbol_type yylex(driver &drv)
 YY_DECL;
 
 class driver
 {
 public:
-    driver();
+  driver();
 
-    int result;
-    std::string file;
-    bool trace_parsing;
-    bool trace_scanning;
-    yy::location location;
+  int result;
+  std::string file;
+  bool trace_parsing;
+  bool trace_scanning;
+  yy::location location;
 
-    int parse(const std::string &f);
+  int parse(const std::string &f);
 
-    void scan_begin();
-    void scan_end();
+  void scan_begin();
+  void scan_end();
 };

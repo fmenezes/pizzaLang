@@ -61,3 +61,7 @@ add_executable(bison-test src/parseapp.cpp src/driver.cpp ${BISON_PARSER_OUTPUTS
 target_include_directories(bison-test PUBLIC include ${CMAKE_CURRENT_BINARY_DIR})
 target_link_libraries(bison-test ${FLEX_LIBRARIES})
 set_target_properties(bison-test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+
+target_compile_features(bison-test PRIVATE cxx_std_14)
+
+target_link_libraries(bison-test ${llvm_libs})

@@ -13,7 +13,7 @@ class driver
 public:
   driver();
 
-  int result;
+  double result;
   std::string file;
   bool trace_parsing;
   bool trace_scanning;

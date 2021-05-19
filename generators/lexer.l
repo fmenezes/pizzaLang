@@ -1,6 +1,6 @@
 %{
 # include <cerrno>
-# include <climits>
+# include <cfloat>
 # include <cstdlib>
 # include <string>
 # include "driver.hpp"
@@ -9,7 +9,7 @@
 
 %option noyywrap nounput batch debug noinput
 
-int   [0-9]+
+num   [0-9]+(\.[0-9]+)?
 blank [ \t]
 
 %{
@@ -31,11 +31,11 @@ blank [ \t]
 ")"      return yy::parser::make_RPAREN    (loc);
 ";"      return yy::parser::make_SEMICOLON (loc);
 
-{int}      {
+{num}      {
   errno = 0;
-  long n = strtol (yytext, NULL, 10);
-  if (! (INT_MIN <= n && n <= INT_MAX && errno != ERANGE))
-    throw yy::parser::syntax_error (loc, "integer is out of range: "
+  double n = strtod (yytext, NULL);
+  if (! (DBL_MIN <= n && n <= DBL_MAX && errno != ERANGE))
+    throw yy::parser::syntax_error (loc, "double is out of range: "
                                     + std::string(yytext));
   return yy::parser::make_NUMBER (n, loc);
 }

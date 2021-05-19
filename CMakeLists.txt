@@ -56,8 +56,9 @@ flex_target(LEXER generators/lexer.l ${CMAKE_CURRENT_BINARY_DIR}/lexer.cpp)
 
 add_flex_bison_dependency(LEXER PARSER)
 
+file(GLOB BISON_SOURCES "src/parseapp.cpp" "src/driver.cpp" "src/pizza/*.cpp")
 
-add_executable(bison-test src/parseapp.cpp src/driver.cpp ${BISON_PARSER_OUTPUTS} ${FLEX_LEXER_OUTPUTS})
+add_executable(bison-test ${BISON_SOURCES} ${BISON_PARSER_OUTPUTS} ${FLEX_LEXER_OUTPUTS})
 target_include_directories(bison-test PUBLIC include ${CMAKE_CURRENT_BINARY_DIR})
 target_link_libraries(bison-test ${FLEX_LIBRARIES})
 set_target_properties(bison-test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")

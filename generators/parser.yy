@@ -38,9 +38,9 @@
   RPAREN   ")"
 ;
 
-%token <int> NUMBER "number"
+%token <double> NUMBER "number"
 %token SEMICOLON
-%type  <int> exp
+%type  <double> exp
 
 %printer { yyoutput << $$; } <*>;
 

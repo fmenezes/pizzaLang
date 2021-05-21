@@ -10,16 +10,21 @@ YY_DECL;
 
 class driver
 {
+private:
+  double result;
+
 public:
   driver();
 
-  double result;
   std::string file;
   bool trace_parsing;
   bool trace_scanning;
   yy::location location;
 
   int parse(const std::string &f);
+
+  const double &getResult();
+  void setResult(const double &d);
 
   void scan_begin();
   void scan_end();

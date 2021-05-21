@@ -29,17 +29,17 @@
 %define api.token.prefix {TOK_}
 
 %token
-  END  0   "end of file"
-  MINUS    "-"
-  PLUS     "+"
-  STAR     "*"
-  SLASH    "/"
-  LPAREN   "("
-  RPAREN   ")"
+  END  0    "end of file"
+  MINUS     "-"
+  PLUS      "+"
+  STAR      "*"
+  SLASH     "/"
+  LPAREN    "("
+  RPAREN    ")"
+  SEMICOLON ";"
 ;
 
 %token <double> NUMBER "number"
-%token SEMICOLON
 %type  <double> exp
 
 %printer { yyoutput << $$; } <*>;
@@ -48,7 +48,8 @@
 %start program;
 
 program:
-  stmts;
+  %empty
+|  stmts;
 
 %left "+" "-";
 %left "*" "/";
@@ -58,7 +59,7 @@ stmts:
 | stmt stmts    { };
 
 stmt:
-  exp SEMICOLON { drv.result = $1; std::cout << $1 << std::endl; };
+  exp ";" { drv.setResult($1); };
 
 exp:
   exp "+" exp   { $$ = $1 + $3; }
